@@ -2,8 +2,6 @@ package main
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"configtool.local/asis"
 	"configtool.local/platform"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -45,10 +44,10 @@ func appendOutput(bindStr binding.String, msg string) error {
 	return nil
 }
 
-func hashString(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:])
-}
+//func hashString(s string) string {
+//	h := sha256.Sum256([]byte(s))
+//	return hex.EncodeToString(h[:])
+//}
 
 func saveConfig(cfg AppConfig, path string) error {
 	f, err := os.Create(path)
@@ -95,7 +94,7 @@ func main() {
 
 	repoURL := "https://configs.net.rt.ru/dc/configs.git"
 	targetDir := "./configs" // куда клонируем репо
-	sortedDst := "./config_files"
+	sortedDst := "./config_files_clear"
 
 	a := app.New()
 	a.Settings().SetTheme(theme.LightTheme())
@@ -218,8 +217,10 @@ func main() {
 
 	setConfig := func() {
 		cfg.GitLabLogin = loginEntry.Text
-		cfg.GitLabPass = hashString(passEntry.Text)
-		cfg.NetboxToken = hashString(netboxEntry.Text)
+		cfg.GitLabPass = passEntry.Text
+		cfg.NetboxToken = netboxEntry.Text
+		//cfg.GitLabPass = hashString(passEntry.Text)
+		//cfg.NetboxToken = hashString(netboxEntry.Text)
 
 		switch {
 		case asIsCheck.Checked:
@@ -258,7 +259,10 @@ func main() {
 			passEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
 			netboxEntry.SetText("")
 			netboxEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
-
+			scheduleEntry.SetText("")
+			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
+			timeEntry.SetText("")
+			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 			appendOutput(outputText, "✅ Настройки сохранены.")
 		}
 
@@ -306,6 +310,21 @@ func main() {
 		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 			return
 		}
+		//ошибка логина
+		if loginEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
+			return
+		}
+
+		if passEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
+			return
+		}
+		if netboxEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+			return
+		}
+
 		if saveBtn.Text == "Сбросить" {
 			dialog.ShowConfirm(
 				"Подтверждение",
@@ -343,11 +362,37 @@ func main() {
 		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 			return
 		}
+		if loginEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
+			return
+		}
+
+		if passEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
+			return
+		}
+		if netboxEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+			return
+		}
+
 		cloneBtn.Disable() // делаем неактивной пока работает
 		_ = outputText.Set("⏳ Начинаю загрузку из GitLab...\n")
 
 		login := strings.TrimSpace(loginEntry.Text)
 		pass := strings.TrimSpace(passEntry.Text)
+		token := strings.TrimSpace(netboxEntry.Text)
+
+		if login == "" && cfg.GitLabLogin != "" {
+			login = cfg.GitLabLogin
+		}
+		if pass == "" && cfg.GitLabPass != "" {
+			pass = cfg.GitLabPass
+		}
+		if token == "" && cfg.NetboxToken != "" {
+			token = cfg.NetboxToken
+		}
+		//token := strings.TrimSpace(netboxEntry.Text)
 
 		// Сформировать auth URL (если надо)
 		authURL := repoURL
@@ -364,7 +409,7 @@ func main() {
 			if err := cmd.Start(); err != nil {
 				current, _ := outputText.Get()
 				//_ = outputText.Set(current + fmt.Sprintf("❌ Ошибка запуска git: %v\n", err))
-				_ = outputText.Set(current + fmt.Sprintf("", err))
+				_ = outputText.Set(current + fmt.Sprintf("и тут ошибка", err))
 				cloneBtn.Enable()
 				return
 			}
@@ -414,7 +459,7 @@ func main() {
 			if joined == "" {
 				joined = "Скачивание завершено (без сообщений).\n"
 			}
-			_ = appendOutput(outputText, fmt.Sprintf("❌ Ошибка запуска git: %v", err))
+			_ = appendOutput(outputText, fmt.Sprintf("тут ошибка ", err))
 			//_ = outputText.Set(current + fmt.Sprintf("❌ Ошибка запуска git: %v\n", err))
 			_ = appendOutput(outputText, "\n✅ Репозиторий загружен.\n")
 			//_ = outputText.Set(outputString(outputText) + joined + "\n✅ Репозиторий загружен.\n")
@@ -424,14 +469,41 @@ func main() {
 				_ = appendOutput(outputText, "🚀 Запуск сортировки по платформам...\n")
 
 				// SortFilesByPlatform должен принимать binding.String, см. файл sort_by_platform.go
-				if err := platform.SortFilesByPlatform(targetDir, sortedDst, netboxEntry.Text, outputText, scroll); err != nil {
+				if err := platform.SortFilesByPlatform(targetDir, sortedDst, token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, fmt.Sprintf("❌ Ошибка сортировки: %v\n", err))
 					//_ = outputText.Set(outputString(outputText) + fmt.Sprintf("❌ Ошибка сортировки: %v\n", err))
 				} else {
 					_ = appendOutput(outputText, "\n✅ Завершено успешно.")
+
 					//_ = outputText.Set(outputString(outputText) + "✅ Сортировка завершена.\n")
 				}
 			}
+
+			if asIsCheck.Checked {
+
+				//_ = appendOutput(outputText, "🚀 Запуск клонирования в режиме 'Как есть'...\n")
+
+				//asis.MoveAsIs(targetDir, sortedDst, output)
+
+				if err := asis.MoveAsIs(targetDir, sortedDst, output); err != nil {
+					_ = appendOutput(outputText, fmt.Sprintf("❌ Ошибка копирования: %v\n", err))
+				} else {
+					_ = appendOutput(outputText, "\n✅ Завершено успешно.")
+				}
+			}
+
+			//if asIsCheck.Checked {
+			//	_ = appendOutput(outputText, "🚀 Скачиание без сортировки...\n")
+			//
+			//	err = asis.CopyAsIs(targetDir, sortedDst, output, scroll)
+			//
+			//} else if platformCheck.Checked {
+			//	err = platform.SortFilesByPlatform(targetDir, sortedDst, netboxEntry.Text, output, scroll)
+			//
+			//} else if regionCheck.Checked {
+			//	err = region.SortFilesByRegion(targetDir, sortedDst, output, scroll)
+			//	}
+			//}
 
 			// всё готово — разблокируем кнопку (в главном потоке это безопасно сделать через binding Set)
 			cloneBtn.Enable()
@@ -468,6 +540,27 @@ func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fy
 	}
 	return true
 }
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false // ошибка или файла нет
+	}
+	return !info.IsDir() // существует и это файл
+}
+
+//func ValidateCredentials(login, pass, token string) error {
+//	if strings.TrimSpace(login) == "" {
+//		return fmt.Errorf("Поле логина не заполнено.")
+//	}
+//	if strings.TrimSpace(pass) == "" {
+//		return fmt.Errorf("Пароль GitLab не заполнен.")
+//	}
+//	if strings.TrimSpace(token) == "" {
+//		return fmt.Errorf("Токен NetBox не заполнен.")
+//	}
+//	return nil
+//}
 
 // helper: получить текущий текст из binding.String (без ошибки)
 //func outputString(b binding.String) string {

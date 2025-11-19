@@ -42,3 +42,5 @@ require (
 replace configtool.local/platform => ./platform
 
 replace configtool.local/nb => ./nb
+
+replace configtool.local/asis => ./asis

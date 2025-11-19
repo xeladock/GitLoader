@@ -14,8 +14,10 @@ import (
 )
 
 var (
-	outputText binding.String
-	scroll     *container.Scroll
+// outputText binding.String
+// scroll     *container.Scroll
+//
+//	loadingConfig bool
 )
 
 // SortFilesByPlatform рекурсивно обходит srcDir,
@@ -26,6 +28,18 @@ func SortFilesByPlatform(srcDir, dstDir, netboxToken string, output binding.Stri
 		"PRNG-DC", "DVPR-DC", "SZSP-DC", "CEMO-DC",
 		"CEMS-DC", "UREK-DC", "UKFR-DC", "SINO-DC",
 	}
+	//очистить папку config_files_clear
+	if err := ClearDestination(dstDir); err != nil {
+		return err
+	}
+
+	//очистить папку configs в конце процесса
+	success := false
+	defer func() {
+		if success {
+			RemoveSourceAfterSuccess(srcDir, output)
+		}
+	}()
 
 	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -79,18 +93,18 @@ func SortFilesByPlatform(srcDir, dstDir, netboxToken string, output binding.Stri
 
 // appendToOutput безопасно добавляет строку в binding.String (для GUI)
 
-func AppendToOutput(output binding.String, scroll *container.Scroll, text string) {
+func AppendToOutput(output binding.String, _ *container.Scroll, text string) {
 	current, _ := output.Get()
 	_ = output.Set(current + text + "\n")
-
-	// безопасная автопрокрутка
-	//go func() {
-	//	time.Sleep(80 * time.Millisecond)
-	//	if scroll != nil {
-	//		scroll.ScrollToBottom()
-	//	}
-	//}()
 }
+
+// безопасная автопрокрутка
+//go func() {
+//	time.Sleep(80 * time.Millisecond)
+//	if scroll != nil {
+//		scroll.ScrollToBottom()
+//	}
+//}()
 
 func copyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
@@ -108,3 +122,28 @@ func copyFile(src, dst string) error {
 	_, err = io.Copy(destFile, sourceFile)
 	return err
 }
+
+func ClearDestination(dstDir string) error {
+	// Удаляем всё содержимое (или всю папку)
+	if err := os.RemoveAll(dstDir); err != nil {
+		return fmt.Errorf("не удалось очистить целевую папку: %w", err)
+	}
+
+	// Создаём чистую папку заново
+	if err := os.MkdirAll(dstDir, 0777); err != nil {
+		return fmt.Errorf("не удалось создать целевую папку: %w", err)
+	}
+	return nil
+}
+
+func RemoveSourceAfterSuccess(srcDir string, output binding.String) {
+	if err := os.RemoveAll(srcDir); err != nil {
+		AppendToOutput(output, nil, fmt.Sprintf("Предупреждение: не удалось удалить папку %s: %v\n", srcDir, err))
+		//} else {
+		//	AppendToOutput(output, nil, "Исходная папка configs удалена.\n")
+	}
+}
+
+//
+//_ = AppendToOutput(output, nil, "Очищена папка с предыдущими результатами.\n")
+//return nil
