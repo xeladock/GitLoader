@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"configtool.local/asis"
 	"configtool.local/platform"
+	"configtool.local/region"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -41,6 +44,25 @@ func appendOutput(bindStr binding.String, msg string) error {
 		return fmt.Errorf("ошибка записи binding.String: %w", err)
 	}
 
+	return nil
+}
+
+func RemoveGitFolder(dir string, output binding.String) error {
+	gitPath := filepath.Join(dir, ".git")
+
+	// Проверяем, существует ли .git
+	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
+		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
+		return nil
+	}
+
+	// Удаляем полностью
+	if err := os.RemoveAll(gitPath); err != nil {
+		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
+		return err
+	}
+
+	//appendOutput(output, "Папка .git удалена.\n")
 	return nil
 }
 
@@ -80,7 +102,19 @@ type AppConfig struct {
 	ScheduleDays int    `json:"schedule_days"`
 	ScheduleTime string `json:"schedule_time"` // "HH:MM"
 }
+type ReadOnlyEntry struct {
+	widget.Entry
+}
 
+func NewReadOnlyEntry() *ReadOnlyEntry {
+	e := &ReadOnlyEntry{}
+	e.ExtendBaseWidget(e)
+	return e
+}
+
+// ❗ Полностью блокируем ввод с клавиатуры
+func (e *ReadOnlyEntry) TypedRune(r rune)           {}
+func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
 func main() {
 
 	const configPath = "config.json"
@@ -121,7 +155,10 @@ func main() {
 	timeEntry.SetPlaceHolder("Время обновления (HH:MM). По-умолчанию - 00:00")
 	//aaaa
 	outputText := binding.NewString()
-	output := widget.NewMultiLineEntry()
+	//output := widget.NewMultiLineEntry()
+	output := NewReadOnlyEntry()
+	output.MultiLine = true
+	//output.Disable()
 	output.Bind(outputText)
 	output.SetMinRowsVisible(15)
 	scroll := container.NewVScroll(output)
@@ -141,11 +178,11 @@ func main() {
 
 		switch selected {
 		case "as-is":
-			_ = outputText.Set("📂 Режим: хранить файлы как есть (без сортировки)\n")
+			_ = outputText.Set("📂 Режим: хранить файлы как есть (без сортировки).\n")
 		case "platform":
-			_ = outputText.Set("🔎 Режим: сортировка по платформам (NetBox)\n")
+			_ = outputText.Set("🔎 Режим: сортировка по платформам.\n")
 		case "region":
-			_ = outputText.Set("📍 Режим: сортировка по регионам\n")
+			_ = outputText.Set("📍 Режим: сортировка по регионам.\n")
 		}
 	}
 
@@ -207,7 +244,7 @@ func main() {
 	if cfg.ScheduleTime != "" {
 		timeEntry.SetText(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 	}
-
+	//var saveBtn *widget.Button
 	saveBtn := widget.NewButton("Сохранить", nil)
 
 	//btn := widget.NewButton("Добавить строку", func() {
@@ -377,6 +414,7 @@ func main() {
 		}
 
 		cloneBtn.Disable() // делаем неактивной пока работает
+		saveBtn.Disable()
 		_ = outputText.Set("⏳ Начинаю загрузку из GitLab...\n")
 
 		login := strings.TrimSpace(loginEntry.Text)
@@ -411,6 +449,7 @@ func main() {
 				//_ = outputText.Set(current + fmt.Sprintf("❌ Ошибка запуска git: %v\n", err))
 				_ = outputText.Set(current + fmt.Sprintf("и тут ошибка", err))
 				cloneBtn.Enable()
+				saveBtn.Enable()
 				return
 			}
 
@@ -450,7 +489,13 @@ func main() {
 			// ждём чтения потоков
 			<-outDone
 			<-errDone
+			time.Sleep(1 * time.Second)
+			if err := RemoveGitFolder(targetDir, outputText); err != nil {
+				// Не прерываем выполнение — это не критично
+				_ = appendOutput(outputText, fmt.Sprintf("Предупреждение: не удалось удалить .git: %v\n", err))
+			}
 
+			time.Sleep(1 * time.Second)
 			// ждём завершения процесса
 			_ = cmd.Wait()
 
@@ -460,11 +505,13 @@ func main() {
 				joined = "Скачивание завершено (без сообщений).\n"
 			}
 			_ = appendOutput(outputText, fmt.Sprintf("тут ошибка ", err))
+
 			//_ = outputText.Set(current + fmt.Sprintf("❌ Ошибка запуска git: %v\n", err))
 			_ = appendOutput(outputText, "\n✅ Репозиторий загружен.\n")
 			//_ = outputText.Set(outputString(outputText) + joined + "\n✅ Репозиторий загружен.\n")
 
 			// Если выбран режим Платформа — запускаем сортировку
+
 			if platformCheck.Checked {
 				_ = appendOutput(outputText, "🚀 Запуск сортировки по платформам...\n")
 
@@ -480,7 +527,6 @@ func main() {
 			}
 
 			if asIsCheck.Checked {
-
 				//_ = appendOutput(outputText, "🚀 Запуск клонирования в режиме 'Как есть'...\n")
 
 				//asis.MoveAsIs(targetDir, sortedDst, output)
@@ -490,6 +536,15 @@ func main() {
 				} else {
 					_ = appendOutput(outputText, "\n✅ Завершено успешно.")
 				}
+			}
+
+			if regionCheck.Checked {
+				_ = appendOutput(outputText, "Запуск сортировки по регионам...\n")
+
+				if err := region.SortByRegion(targetDir, sortedDst, outputText); err != nil {
+					_ = appendOutput(outputText, fmt.Sprintf("Ошибка сортировки по регионам: %v\n", err))
+				}
+				// → "Завершено успешно" уже внутри функции!
 			}
 
 			//if asIsCheck.Checked {
@@ -507,11 +562,15 @@ func main() {
 
 			// всё готово — разблокируем кнопку (в главном потоке это безопасно сделать через binding Set)
 			cloneBtn.Enable()
+			saveBtn.Enable()
 		}()
 	})
 
 	cloneBtn.Resize(fyne.NewSize(140, 40))
 	cloneButtonContainer := container.NewHBox(layout.NewSpacer(), cloneBtn, layout.NewSpacer())
+
+	saveBtn.Resize(fyne.NewSize(140, 40))
+	saveButtonContainer := container.NewHBox(layout.NewSpacer(), saveBtn, layout.NewSpacer())
 
 	// Сборка формы
 	form := container.NewVBox(
@@ -522,7 +581,8 @@ func main() {
 		container.NewHBox(asIsCheck, layout.NewSpacer(), platformCheck, layout.NewSpacer(), regionCheck),
 		cloneButtonContainer,
 		scroll,
-		saveBtn,
+		saveButtonContainer,
+		//saveBtn,
 		scheduleEntry,
 		timeEntry,
 		//passContainer,

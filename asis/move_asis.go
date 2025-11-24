@@ -2,12 +2,14 @@ package asis
 
 import (
 	"os"
-
-	"fyne.io/fyne/v2/widget"
 )
 
+type TextOutput interface {
+	SetText(string)
+}
+
 // MoveAsIs — просто переименовывает папку configs → configs_file_clear
-func MoveAsIs(srcDir, dstDir string, output *widget.Entry) error {
+func MoveAsIs(srcDir, dstDir string, output TextOutput) error {
 	// Удаляем старую папку назначения, если она есть
 	if _, err := os.Stat(dstDir); err == nil {
 		if removeErr := os.RemoveAll(dstDir); removeErr != nil {
