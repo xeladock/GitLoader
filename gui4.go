@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"configtool.local/asis"
-	"configtool.local/platform"
-	"configtool.local/region"
+	"configtool.local/progdl"
+	"configtool.local/scheduler"
+	// "configtool.local/window_action" // removed, using systray instead
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -22,17 +22,54 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/getlantern/systray"
+	//"github.com/tadvi/systray"
 )
 
-// var (
-//
-//	outputText     *widget.Entry
-//	asIsCheck      *widget.Check
-//	platformCheck  *widget.Check
-//	regionCheck    *widget.Check
-//	saveBtn        *widget.Button
-//
-// )
+//go:embed icon/icon.png
+var trayIcon []byte
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, path)
+		target := filepath.Join(dst, rel)
+
+		if info.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode())
+	})
+}
+func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fyne.Window) bool {
+	if !asIsCheck.Checked && !platformCheck.Checked && !regionCheck.Checked {
+		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сортировки.", w)
+		return false
+	}
+	return true
+}
+
+func passModeSelected(updateCheck, progressCheck *widget.Check, w fyne.Window) bool {
+	if !updateCheck.Checked && !progressCheck.Checked {
+		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сохранения.", w)
+		return false
+	}
+	return true
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false // ошибка или файла нет
+	}
+	return !info.IsDir() // существует и это файл
+}
 
 func appendOutput(bindStr binding.String, msg string) error {
 	current, err := bindStr.Get()
@@ -66,11 +103,6 @@ func RemoveGitFolder(dir string, output binding.String) error {
 	return nil
 }
 
-//func hashString(s string) string {
-//	h := sha256.Sum256([]byte(s))
-//	return hex.EncodeToString(h[:])
-//}
-
 func saveConfig(cfg AppConfig, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
@@ -99,8 +131,10 @@ type AppConfig struct {
 	GitLabPass   string `json:"gitlab_pass_hash"`
 	NetboxToken  string `json:"netbox_token_hash"`
 	Mode         string `json:"mode"` // as-is / platform / region
+	SaveMode     string `json:"save_mode"`
 	ScheduleDays int    `json:"schedule_days"`
 	ScheduleTime string `json:"schedule_time"` // "HH:MM"
+	LastRun      string `json:"last_run,omitempty"`
 }
 type ReadOnlyEntry struct {
 	widget.Entry
@@ -115,6 +149,7 @@ func NewReadOnlyEntry() *ReadOnlyEntry {
 // ❗ Полностью блокируем ввод с клавиатуры
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
 func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
+
 func main() {
 
 	const configPath = "config.json"
@@ -130,10 +165,56 @@ func main() {
 	targetDir := "./configs" // куда клонируем репо
 	sortedDst := "./config_files_clear"
 
-	a := app.New()
+	a := app.NewWithID("rt_gitloader")
 	a.Settings().SetTheme(theme.LightTheme())
+
+	// Set Fyne app icon as well (optional)
+	a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
+
 	w := a.NewWindow("GitLab Downloader")
 	w.Resize(fyne.NewSize(900, 700))
+	w.SetFixedSize(true)
+	w.CenterOnScreen()
+
+	// Сворачивание в трей по крестику
+	w.SetCloseIntercept(func() {
+		w.Hide()
+	})
+
+	// === SYSTRAY (getlantern) ===
+	go func() {
+		systray.Run(func() {
+			if len(trayIcon) > 0 {
+				systray.SetIcon(trayIcon)
+			}
+			systray.SetTooltip("GitLab Downloader")
+
+			open := systray.AddMenuItem("Открыть", "Показать программу")
+			quit := systray.AddMenuItem("Выход", "Закрыть программу")
+
+			go func() {
+				for range open.ClickedCh {
+					fyne.Do(func() {
+						w.Show()
+						w.RequestFocus()
+					})
+				}
+			}()
+
+			go func() {
+				for range quit.ClickedCh {
+					fyne.DoAndWait(func() {
+						w.Close()
+					})
+					systray.Quit()
+					a.Quit()
+					os.Exit(0)
+				}
+			}()
+		}, func() {})
+	}()
+
+	// === END SYSTRAY ===
 
 	// Поля ввода
 	loginEntry := widget.NewEntry()
@@ -171,54 +252,104 @@ func main() {
 	platformCheck := widget.NewCheck("Платформа", nil)
 	regionCheck := widget.NewCheck("Регион", nil)
 
-	updateChecks := func(selected string) {
-		asIsCheck.SetChecked(selected == "as-is")
-		platformCheck.SetChecked(selected == "platform")
-		regionCheck.SetChecked(selected == "region")
+	updateCheck := widget.NewCheck("Обновление", nil)
+	progressCheck := widget.NewCheck("Прогресс", nil)
 
-		switch selected {
-		case "as-is":
-			_ = outputText.Set("📂 Режим: хранить файлы как есть (без сортировки).\n")
-		case "platform":
-			_ = outputText.Set("🔎 Режим: сортировка по платформам.\n")
-		case "region":
-			_ = outputText.Set("📍 Режим: сортировка по регионам.\n")
+	updateHint := func() {
+		var lines []string
+
+		// --- Сортировка ---
+		if asIsCheck.Checked {
+			lines = append(lines, "🔎Сортировка: как есть (без изменений)\n")
+		} else if platformCheck.Checked {
+			lines = append(lines, "🔎Сортировка: по платформам\n")
+		} else if regionCheck.Checked {
+			lines = append(lines, "🔎Сортировка: по регионам\n")
+		}
+
+		// --- Режим сохранения ---
+		if updateCheck.Checked {
+			lines = append(lines, "📂Режим: Обновление текущих файлов (перезапись)\n")
+		} else if progressCheck.Checked {
+			lines = append(lines, "📂Режим: Сохранение истории (архив по дням)\n")
+		}
+
+		// Выводим
+		if len(lines) == 0 {
+			_ = outputText.Set("")
+		} else {
+			_ = outputText.Set(strings.Join(lines, "\n"))
 		}
 	}
 
-	// Обработчики кликов:
+	// === ОБРАБОТЧИКИ СОРТИРОВКИ ===
 	asIsCheck.OnChanged = func(checked bool) {
 		if checked {
-			updateChecks("as-is")
-		} else {
-			_ = outputText.Set("") // все выключены
+			platformCheck.SetChecked(false)
+			regionCheck.SetChecked(false)
 		}
+		updateHint()
 	}
 
 	platformCheck.OnChanged = func(checked bool) {
 		if checked {
-			updateChecks("platform")
-		} else {
-			_ = outputText.Set("") // все выключены
+			asIsCheck.SetChecked(false) // ← было platformCheck!
+			regionCheck.SetChecked(false)
 		}
+		updateHint()
 	}
 
 	regionCheck.OnChanged = func(checked bool) {
 		if checked {
-			updateChecks("region")
-		} else {
-			_ = outputText.Set("") // все выключены
+			asIsCheck.SetChecked(false)
+			platformCheck.SetChecked(false) // ← было platformCheck!
 		}
+		updateHint()
 	}
 
-	//asIsCheck.OnChanged = func(checked bool) {
+	// === ОБРАБОТЧИКИ РЕЖИМА СОХРАНЕНИЯ ===
+	updateCheck.OnChanged = func(checked bool) {
+		if checked {
+			progressCheck.SetChecked(false)
+		}
+		updateHint()
+	}
+
+	progressCheck.OnChanged = func(checked bool) {
+		if checked {
+			updateCheck.SetChecked(false)
+		}
+		updateHint()
+	}
+
+	// === ИНИЦИАЛИЗАЦИЯ ПОДСКАЗКИ ПРИ ЗАПУСКЕ ===
+	updateHint() // ← теперь текст появляется сразу!
+	//updateCheck.OnChanged = func(checked bool) {
 	//	if checked {
-	//		updateChecks("as-is")
+	//		passChecks("Обновление")
 	//	} else {
-	//		updateChecks("") // все выключены
+	//		_ = outputText.Set("") // все выключены
 	//	}
 	//}
-	//конец нового формата
+	//
+	//progressCheck.OnChanged = func(checked bool) {
+	//	if checked {
+	//		passChecks("История")
+	//	} else {
+	//		_ = outputText.Set("") // все выключены
+	//	}
+	//}
+	// Делаем два чекбоксы взаимоисключающими (как радиокнопки)
+
+	// По умолчанию — режим обновления
+	updateCheck.SetChecked(false)
+	progressCheck.SetChecked(false)
+
+	// Восстанавливаем сохранённый режим
+	if cfg.SaveMode == "progress" {
+		updateCheck.SetChecked(false)
+		progressCheck.SetChecked(true)
+	}
 
 	if cfg.GitLabLogin != "" {
 		loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
@@ -244,20 +375,14 @@ func main() {
 	if cfg.ScheduleTime != "" {
 		timeEntry.SetText(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 	}
-	//var saveBtn *widget.Button
+
 	saveBtn := widget.NewButton("Сохранить", nil)
 
-	//btn := widget.NewButton("Добавить строку", func() {
-	//	platform.AppendToOutput(output, fmt.Sprintf("Лог %v", time.Now().Format("15:04:05")))
-	//})
-	//w.SetContent(container.NewVBox(scroll, btn))
-
+	//записываем настройки
 	setConfig := func() {
 		cfg.GitLabLogin = loginEntry.Text
 		cfg.GitLabPass = passEntry.Text
 		cfg.NetboxToken = netboxEntry.Text
-		//cfg.GitLabPass = hashString(passEntry.Text)
-		//cfg.NetboxToken = hashString(netboxEntry.Text)
 
 		switch {
 		case asIsCheck.Checked:
@@ -267,6 +392,15 @@ func main() {
 		case regionCheck.Checked:
 			cfg.Mode = "region"
 		}
+
+		switch {
+		case updateCheck.Checked:
+			cfg.SaveMode = "Update"
+		case progressCheck.Checked:
+			cfg.SaveMode = "Progress"
+		}
+
+		//cfg.SaveMode = modeRadio.Selected
 
 		days, _ := strconv.Atoi(scheduleEntry.Text)
 		if days < 1 {
@@ -284,8 +418,7 @@ func main() {
 		}
 
 		cfg.ScheduleDays = days
-
-		saveConfig(*cfg, configPath)
+		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
 
 		if err := saveConfig(*cfg, configPath); err != nil {
 			appendOutput(outputText, fmt.Sprintf("❌ Ошибка сохранения: %v", err))
@@ -302,9 +435,8 @@ func main() {
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 			appendOutput(outputText, "✅ Настройки сохранены.")
 		}
-
 	}
-
+	//если конфига есть, то меняет название кнопки
 	updateButtonState := func() {
 		if _, err := os.Stat(configPath); err == nil {
 			saveBtn.SetText("Сбросить")
@@ -314,6 +446,7 @@ func main() {
 	}
 	updateButtonState()
 	outputView := widget.NewLabelWithData(outputText)
+	//сбросить конфигу
 	resetConfig := func() {
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
@@ -336,30 +469,33 @@ func main() {
 		scheduleEntry.SetPlaceHolder("Интервал (дней, 1–31)")
 		timeEntry.SetText("")
 		timeEntry.SetPlaceHolder("Время обновления (HH:MM)")
-		appendOutput(outputText, "\n⚙️ Настройки сброшены.\n")
-		//outputView.SetText(outputView.Text + "\n⚙️ Настройки сброшены.\n")
+		appendOutput(outputText, "⚙️ Настройки сброшены.\n")
 		updateButtonState()
 
 	}
-
 	//действие кнопки "скачать/сохранить"
 	saveBtn.OnTapped = func() {
-		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
-			return
-		}
-		//ошибка логина
-		if loginEntry.Text == "" && !fileExists(configPath) {
-			dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
-			return
-		}
+		if saveBtn.Text == "Сохранить" {
+			if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
+				return
+			}
+			if !passModeSelected(updateCheck, progressCheck, w) {
+				return
+			}
+			//ошибка логина
+			if loginEntry.Text == "" && !fileExists(configPath) {
+				dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
+				return
+			}
 
-		if passEntry.Text == "" && !fileExists(configPath) {
-			dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
-			return
-		}
-		if netboxEntry.Text == "" && !fileExists(configPath) {
-			dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
-			return
+			if passEntry.Text == "" && !fileExists(configPath) {
+				dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
+				return
+			}
+			if netboxEntry.Text == "" && !fileExists(configPath) {
+				dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+				return
+			}
 		}
 
 		if saveBtn.Text == "Сбросить" {
@@ -381,41 +517,50 @@ func main() {
 		}
 	}
 
-	//content := container.NewVBox(
-	//	passContainer,
-	//	saveBtn,
+	// 1. Создаём кнопку для загрузки
+	cloneBtn := widget.NewButton("Скачать", nil)
+	cloneBtn.Importance = widget.HighImportance
+
+	allBlock := func() {
+		cloneBtn.Disable()
+		saveBtn.Disable()
+		asIsCheck.Disable()
+		platformCheck.Disable()
+		regionCheck.Disable()
+	}
+
+	allUnblock := func() {
+		cloneBtn.Enable()
+		saveBtn.Enable()
+		asIsCheck.Enable()
+		platformCheck.Enable()
+		regionCheck.Enable()
+	}
+
+	//passChecks.Horizontal = true
+	//modeRadio.SetSelected("Обновление")
+
+	// Горизонтальная строка: слева — подпись, справа — радиокнопки
+
+	//modeRow := container.NewHBox(
+	//	label,
+	//	layout.NewSpacer(),
+	//	modeRadio, // справа — радиокнопки
 	//)
-	//
-	//w.SetContent(content)
-	//w.ShowAndRun()
-
-	// Output через binding
-
-	// Чекбоксы (создаём один раз)
-
-	// Кнопка "Скачать" — запускает клонирование, затем (опционально) сортировку
-	var cloneBtn *widget.Button
-	cloneBtn = widget.NewButton("Скачать", func() {
+	//modeCard2 := widget.NewCard("", "", modeRow)
+	//modeRadioContainer := container.NewCenter(modeCard2)
+	startDownload := func() {
 		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 			return
 		}
-		if loginEntry.Text == "" && !fileExists(configPath) {
-			dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
+		if !passModeSelected(updateCheck, progressCheck, w) {
 			return
 		}
 
-		if passEntry.Text == "" && !fileExists(configPath) {
-			dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
-			return
-		}
-		if netboxEntry.Text == "" && !fileExists(configPath) {
-			dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
-			return
-		}
+		// ... проверки логина/пароля ...
 
-		cloneBtn.Disable() // делаем неактивной пока работает
-		saveBtn.Disable()
-		_ = outputText.Set("⏳ Начинаю загрузку из GitLab...\n")
+		allBlock()
+		_ = appendOutput(outputText, "Начинаю загрузку из GitLab...\n")
 
 		login := strings.TrimSpace(loginEntry.Text)
 		pass := strings.TrimSpace(passEntry.Text)
@@ -430,200 +575,168 @@ func main() {
 		if token == "" && cfg.NetboxToken != "" {
 			token = cfg.NetboxToken
 		}
-		//token := strings.TrimSpace(netboxEntry.Text)
 
-		// Сформировать auth URL (если надо)
 		authURL := repoURL
-		if login != "" {
+		if login != "" && pass != "" {
 			authURL = fmt.Sprintf("https://%s:%s@%s", login, pass, strings.TrimPrefix(repoURL, "https://"))
 		}
 
 		go func() {
-			// запускаем git clone
 			cmd := exec.Command("git", "clone", "--depth", "1", authURL, targetDir)
-			stdout, _ := cmd.StdoutPipe()
-			stderr, _ := cmd.StderrPipe()
+			outputBytes, err := cmd.CombinedOutput()
+			_ = string(outputBytes)
 
-			if err := cmd.Start(); err != nil {
-				current, _ := outputText.Get()
-				//_ = outputText.Set(current + fmt.Sprintf("❌ Ошибка запуска git: %v\n", err))
-				_ = outputText.Set(current + fmt.Sprintf("и тут ошибка", err))
-				cloneBtn.Enable()
-				saveBtn.Enable()
+			if err != nil {
+
+				switch {
+				case strings.Contains(string(outputBytes), "Authentication failed"):
+					_ = appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
+				case strings.Contains(string(outputBytes), "not found"):
+					_ = appendOutput(outputText, "Ошибка: git не найден в PATH\n")
+				case strings.Contains(string(outputBytes), "Could not resolve host"):
+					_ = appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
+				case strings.Contains(string(outputBytes), "Repository not found"):
+					_ = appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
+				default:
+					_ = appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
+				}
+				fyne.Do(allUnblock)
 				return
 			}
 
-			// читаем потоки параллельно и собираем краткий лог
-			lines := make([]string, 0)
-			outDone := make(chan struct{})
-			errDone := make(chan struct{})
+			// ВСЁ НОРМА — запускаем нужный режим
+			isProgressMode := progressCheck.Checked
 
-			go func() {
-				sc := bufio.NewScanner(stdout)
-				for sc.Scan() {
-					// не выводим прогресс; собираем только важные stdout строки
-					txt := sc.Text()
-					if strings.TrimSpace(txt) != "" {
-						lines = append(lines, txt)
-					}
-				}
-				close(outDone)
-			}()
-
-			go func() {
-				sc := bufio.NewScanner(stderr)
-				for sc.Scan() {
-					// stderr содержит прогресс и ошибки — здесь можно фильтровать
-					txt := sc.Text()
-					// фильтруем строки с \r (прогресс) — сохраняем только ошибки
-					if strings.Contains(txt, "already exists and is not an empty directory") {
-						lines = append(lines, "⚠️ Папка назначения уже существует.")
-					} else if strings.TrimSpace(strings.ReplaceAll(txt, "\r", "")) != "" {
-						// собираем остальные осмысленные сообщения
-						lines = append(lines, strings.ReplaceAll(txt, "\r", ""))
-					}
-				}
-				close(errDone)
-			}()
-
-			// ждём чтения потоков
-			<-outDone
-			<-errDone
-			time.Sleep(1 * time.Second)
-			if err := RemoveGitFolder(targetDir, outputText); err != nil {
-				// Не прерываем выполнение — это не критично
-				_ = appendOutput(outputText, fmt.Sprintf("Предупреждение: не удалось удалить .git: %v\n", err))
-			}
-
-			time.Sleep(1 * time.Second)
-			// ждём завершения процесса
-			_ = cmd.Wait()
-
-			// Обновляем output один раз кратким результатом
-			joined := strings.Join(lines, "\n")
-			if joined == "" {
-				joined = "Скачивание завершено (без сообщений).\n"
-			}
-			_ = appendOutput(outputText, fmt.Sprintf("тут ошибка ", err))
-
-			//_ = outputText.Set(current + fmt.Sprintf("❌ Ошибка запуска git: %v\n", err))
-			_ = appendOutput(outputText, "\n✅ Репозиторий загружен.\n")
-			//_ = outputText.Set(outputString(outputText) + joined + "\n✅ Репозиторий загружен.\n")
-
-			// Если выбран режим Платформа — запускаем сортировку
-
-			if platformCheck.Checked {
-				_ = appendOutput(outputText, "🚀 Запуск сортировки по платформам...\n")
-
-				// SortFilesByPlatform должен принимать binding.String, см. файл sort_by_platform.go
-				if err := platform.SortFilesByPlatform(targetDir, sortedDst, token, outputText, scroll); err != nil {
-					_ = appendOutput(outputText, fmt.Sprintf("❌ Ошибка сортировки: %v\n", err))
-					//_ = outputText.Set(outputString(outputText) + fmt.Sprintf("❌ Ошибка сортировки: %v\n", err))
+			if isProgressMode {
+				_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
+				if err := progdl.RunProgressMode(targetDir, sortedDst,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked,
+					token, outputText, scroll); err != nil {
+					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "\n✅ Завершено успешно.")
-
-					//_ = outputText.Set(outputString(outputText) + "✅ Сортировка завершена.\n")
+					_ = appendOutput(outputText, "Готово!\n")
 				}
-			}
-
-			if asIsCheck.Checked {
-				//_ = appendOutput(outputText, "🚀 Запуск клонирования в режиме 'Как есть'...\n")
-
-				//asis.MoveAsIs(targetDir, sortedDst, output)
-
-				if err := asis.MoveAsIs(targetDir, sortedDst, output); err != nil {
-					_ = appendOutput(outputText, fmt.Sprintf("❌ Ошибка копирования: %v\n", err))
+			} else {
+				_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
+				if err := progdl.RunUpdateMode(targetDir, sortedDst,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked,
+					token, outputText, scroll); err != nil {
+					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "\n✅ Завершено успешно.")
+					_ = appendOutput(outputText, "Готово!\n")
 				}
 			}
 
-			if regionCheck.Checked {
-				_ = appendOutput(outputText, "Запуск сортировки по регионам...\n")
+			cfg.LastRun = time.Now().Format(time.RFC3339)
+			_ = saveConfig(*cfg, configPath)
 
-				if err := region.SortByRegion(targetDir, sortedDst, outputText); err != nil {
-					_ = appendOutput(outputText, fmt.Sprintf("Ошибка сортировки по регионам: %v\n", err))
-				}
-				// → "Завершено успешно" уже внутри функции!
-			}
+			fyne.Do(func() {
+				scroll.ScrollToBottom()
+				scroll.Refresh()
+				allUnblock()
+			})
 
-			//if asIsCheck.Checked {
-			//	_ = appendOutput(outputText, "🚀 Скачиание без сортировки...\n")
-			//
-			//	err = asis.CopyAsIs(targetDir, sortedDst, output, scroll)
-			//
-			//} else if platformCheck.Checked {
-			//	err = platform.SortFilesByPlatform(targetDir, sortedDst, netboxEntry.Text, output, scroll)
-			//
-			//} else if regionCheck.Checked {
-			//	err = region.SortFilesByRegion(targetDir, sortedDst, output, scroll)
-			//	}
+			//if runErr != nil {
+			//	_ = appendOutput(outputText, "Ошибка выполнения: "+runErr.Error()+"\n")
 			//}
-
-			// всё готово — разблокируем кнопку (в главном потоке это безопасно сделать через binding Set)
-			cloneBtn.Enable()
-			saveBtn.Enable()
+			//else _ = appendOutput(outputText, "Готово!\n")
+			//}
 		}()
-	})
+	}
+
+	cloneBtn.OnTapped = func() {
+		// Если config.json существует И расписание настроено → спрашиваем
+		if fileExists(configPath) && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
+			dialog.ShowConfirm(
+				"Ой!",
+				"Всё равно скачать сейчас?\n",
+				func(confirmed bool) {
+					if confirmed {
+						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
+						startDownload() // ← запускаем скачивание
+					}
+				},
+				w,
+			)
+		} else {
+			// Если расписания нет — скачиваем сразу
+			startDownload()
+		}
+	}
 
 	cloneBtn.Resize(fyne.NewSize(140, 40))
 	cloneButtonContainer := container.NewHBox(layout.NewSpacer(), cloneBtn, layout.NewSpacer())
 
 	saveBtn.Resize(fyne.NewSize(140, 40))
 	saveButtonContainer := container.NewHBox(layout.NewSpacer(), saveBtn, layout.NewSpacer())
+	sortLabel := widget.NewLabel("Сортировка:    ")
+	sortLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	sortBox := container.NewGridWithColumns(3,
+		container.NewCenter(asIsCheck),
+		container.NewCenter(platformCheck),
+		container.NewCenter(regionCheck),
+	)
+	sortCard := widget.NewCard("", "", sortBox)
+	sortBlock := container.NewHBox(
+		container.NewCenter(sortLabel), // центрируем по вертикали
+		sortCard,
+	)
+
+	passLabel := widget.NewLabel("Режим работы:")
+	passLabel.TextStyle = fyne.TextStyle{Bold: false}
+
+	passBox := container.NewGridWithColumns(3,
+		container.NewCenter(updateCheck),
+		container.NewCenter(progressCheck),
+	)
+	passCard := widget.NewCard("", "", passBox)
+	passBlock := container.NewHBox(
+		container.NewCenter(passLabel), // центрируем по вертикали
+		passCard,
+	)
+
+	//modeBox := container.NewGridWithColumns(3,
+	//	container.NewCenter(asIsCheck),
+	//	container.NewCenter(platformCheck),
+	//	container.NewCenter(regionCheck),
+	//)
+	//modeCard := widget.NewCard("", "", modeBox)
+	//centeredModeBox := container.NewCenter(modeCard)
+
+	//запуск расписания
+	if cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
+		go scheduler.Start(
+			configPath,       // ← путь к файлу
+			cfg.ScheduleDays, // ← дни
+			cfg.ScheduleTime, // ← время
+			cfg.LastRun,      // ← текущий LastRun
+			func(newLastRun string) { // ← callback: обновляем cfg и сохраняем
+				cfg.LastRun = newLastRun
+				_ = saveConfig(*cfg, configPath)
+			},
+			func() { cloneBtn.OnTapped() }, // ← действие
+			outputText,
+		)
+	}
 
 	// Сборка формы
 	form := container.NewVBox(
 		loginEntry,
 		passEntry,
 		netboxEntry,
-		//passContainer,
-		container.NewHBox(asIsCheck, layout.NewSpacer(), platformCheck, layout.NewSpacer(), regionCheck),
+		sortBlock,
+		passBlock,
+		//centeredModeBox,
+		//modeRadioContainer,
+
 		cloneButtonContainer,
 		scroll,
 		saveButtonContainer,
-		//saveBtn,
 		scheduleEntry,
 		timeEntry,
-		//passContainer,
-		//maskedPass
 	)
 
 	w.SetContent(form)
 	w.ShowAndRun()
 }
-
-func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fyne.Window) bool {
-	if !asIsCheck.Checked && !platformCheck.Checked && !regionCheck.Checked {
-		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сохранения.", w)
-		return false
-	}
-	return true
-}
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false // ошибка или файла нет
-	}
-	return !info.IsDir() // существует и это файл
-}
-
-//func ValidateCredentials(login, pass, token string) error {
-//	if strings.TrimSpace(login) == "" {
-//		return fmt.Errorf("Поле логина не заполнено.")
-//	}
-//	if strings.TrimSpace(pass) == "" {
-//		return fmt.Errorf("Пароль GitLab не заполнен.")
-//	}
-//	if strings.TrimSpace(token) == "" {
-//		return fmt.Errorf("Токен NetBox не заполнен.")
-//	}
-//	return nil
-//}
-
-// helper: получить текущий текст из binding.String (без ошибки)
-//func outputString(b binding.String) string {
-//	s, _ := b.Get()
-//	return s
-//}

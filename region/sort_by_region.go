@@ -83,10 +83,11 @@ func SortByRegion(srcDir, dstBase string, output binding.String) error {
 	}
 	if err == nil {
 		os.RemoveAll(srcDir)
-		Append(output, "Исходная папка configs удалена.\n")
+		//Append(output, "Исходная папка configs удалена.\n")
 	}
 
-	Append(output, "\nСортировка по регионам завершена успешно.\n")
+	//Append(output, "\nСортировка по регионам завершена успешно.\n")
+
 	return nil
 }
 
