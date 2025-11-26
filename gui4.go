@@ -14,6 +14,7 @@ import (
 	"configtool.local/asis"
 	"configtool.local/platform"
 	"configtool.local/region"
+	"configtool.local/scheduler"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -101,6 +102,7 @@ type AppConfig struct {
 	Mode         string `json:"mode"` // as-is / platform / region
 	ScheduleDays int    `json:"schedule_days"`
 	ScheduleTime string `json:"schedule_time"` // "HH:MM"
+	LastRun      string `json:"last_run,omitempty"`
 }
 type ReadOnlyEntry struct {
 	widget.Entry
@@ -115,6 +117,7 @@ func NewReadOnlyEntry() *ReadOnlyEntry {
 // ❗ Полностью блокируем ввод с клавиатуры
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
 func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
+
 func main() {
 
 	const configPath = "config.json"
@@ -252,6 +255,7 @@ func main() {
 	//})
 	//w.SetContent(container.NewVBox(scroll, btn))
 
+	//записываем настройки
 	setConfig := func() {
 		cfg.GitLabLogin = loginEntry.Text
 		cfg.GitLabPass = passEntry.Text
@@ -284,7 +288,7 @@ func main() {
 		}
 
 		cfg.ScheduleDays = days
-
+		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
 		saveConfig(*cfg, configPath)
 
 		if err := saveConfig(*cfg, configPath); err != nil {
@@ -304,7 +308,7 @@ func main() {
 		}
 
 	}
-
+	//если конфига есть, то меняет название кнопки
 	updateButtonState := func() {
 		if _, err := os.Stat(configPath); err == nil {
 			saveBtn.SetText("Сбросить")
@@ -314,6 +318,7 @@ func main() {
 	}
 	updateButtonState()
 	outputView := widget.NewLabelWithData(outputText)
+	//сбросить конфигу
 	resetConfig := func() {
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
@@ -341,7 +346,6 @@ func main() {
 		updateButtonState()
 
 	}
-
 	//действие кнопки "скачать/сохранить"
 	saveBtn.OnTapped = func() {
 		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
@@ -524,6 +528,8 @@ func main() {
 
 					//_ = outputText.Set(outputString(outputText) + "✅ Сортировка завершена.\n")
 				}
+				scroll.ScrollToBottom()
+				scroll.Refresh()
 			}
 
 			if asIsCheck.Checked {
@@ -536,6 +542,8 @@ func main() {
 				} else {
 					_ = appendOutput(outputText, "\n✅ Завершено успешно.")
 				}
+				scroll.ScrollToBottom()
+				scroll.Refresh()
 			}
 
 			if regionCheck.Checked {
@@ -544,6 +552,8 @@ func main() {
 				if err := region.SortByRegion(targetDir, sortedDst, outputText); err != nil {
 					_ = appendOutput(outputText, fmt.Sprintf("Ошибка сортировки по регионам: %v\n", err))
 				}
+				scroll.ScrollToBottom()
+				scroll.Refresh()
 				// → "Завершено успешно" уже внутри функции!
 			}
 
@@ -565,6 +575,28 @@ func main() {
 			saveBtn.Enable()
 		}()
 	})
+	cloneBtn.OnTapped = func() {
+		// Если config.json существует И расписание настроено → спрашиваем
+		if fileExists(configPath) && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
+			dialog.ShowConfirm(
+				"Ой!",
+				"Всё равно скачать сейчас?\n",
+				func(confirmed bool) {
+					if confirmed {
+						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
+						cloneBtn.OnTapped() // ← запускаем скачивание
+					}
+					//else {
+					//appendLog(outputText, "Ручной запуск отменён пользователем\n")
+					//}
+				},
+				w,
+			)
+		}
+		//else {
+		//// Если расписания нет — скачиваем сразу
+		//runDownload()
+	}
 
 	cloneBtn.Resize(fyne.NewSize(140, 40))
 	cloneButtonContainer := container.NewHBox(layout.NewSpacer(), cloneBtn, layout.NewSpacer())
@@ -572,13 +604,46 @@ func main() {
 	saveBtn.Resize(fyne.NewSize(140, 40))
 	saveButtonContainer := container.NewHBox(layout.NewSpacer(), saveBtn, layout.NewSpacer())
 
+	modeBox := container.NewGridWithColumns(3,
+		container.NewCenter(asIsCheck),
+		container.NewCenter(platformCheck),
+		container.NewCenter(regionCheck),
+	)
+	modeCard := widget.NewCard("", "", modeBox)
+	centeredModeBox := container.NewCenter(modeCard)
+
+	//запуск расписания
+	//cfg.ConfigPath = configPath
+	if cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
+		go scheduler.Start(
+			configPath,       // ← путь к файлу
+			cfg.ScheduleDays, // ← дни
+			cfg.ScheduleTime, // ← время
+			cfg.LastRun,      // ← текущий LastRun
+			func(newLastRun string) { // ← callback: обновляем cfg и сохраняем
+				cfg.LastRun = newLastRun
+				_ = saveConfig(*cfg, configPath)
+			},
+			func() { cloneBtn.OnTapped() }, // ← действие
+			outputText,
+		)
+	}
+
 	// Сборка формы
 	form := container.NewVBox(
 		loginEntry,
 		passEntry,
 		netboxEntry,
+		centeredModeBox,
+		//container.NewHBox(
+		//	asIsCheck,
+		//	widget.NewLabel("  "), // два неразрывных пробела — маленький отступ
+		//	platformCheck,
+		//	widget.NewLabel("  "),
+		//	regionCheck,
+		//),
 		//passContainer,
-		container.NewHBox(asIsCheck, layout.NewSpacer(), platformCheck, layout.NewSpacer(), regionCheck),
+		//container.NewHBox(asIsCheck, layout.NewSpacer(), platformCheck, layout.NewSpacer(), regionCheck),
 		cloneButtonContainer,
 		scroll,
 		saveButtonContainer,
