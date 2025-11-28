@@ -497,7 +497,7 @@ func main() {
 				return
 			}
 		}
-		//сбросить
+		//
 		if saveBtn.Text == "Сбросить" {
 			dialog.ShowConfirm(
 				"Подтверждение",
