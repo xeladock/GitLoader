@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"configtool.local/progdl"
-	"configtool.local/scheduler"
+	//"configtool.local/start_stop"
 	// "configtool.local/window_action" // removed, using systray instead
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -27,26 +26,41 @@ import (
 )
 
 //go:embed icon/icon.png
+
 var trayIcon []byte
 
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(src, path)
-		target := filepath.Join(dst, rel)
-
-		if info.IsDir() {
-			return os.MkdirAll(target, info.Mode())
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, info.Mode())
-	})
+func isValidTime(s string) bool {
+	if len(s) != 5 {
+		return false
+	}
+	if s[2] != ':' {
+		return false
+	}
+	hour := s[:2]
+	minute := s[3:]
+	h, errH := strconv.Atoi(hour)
+	m, errM := strconv.Atoi(minute)
+	return errH == nil && errM == nil && h >= 0 && h <= 23 && m >= 0 && m <= 59
 }
+
+//	func copyDir(src, dst string) error {
+//		return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+//			if err != nil {
+//				return err
+//			}
+//			rel, _ := filepath.Rel(src, path)
+//			target := filepath.Join(dst, rel)
+//
+//			if info.IsDir() {
+//				return os.MkdirAll(target, info.Mode())
+//			}
+//			data, err := os.ReadFile(path)
+//			if err != nil {
+//				return err
+//			}
+//			return os.WriteFile(target, data, info.Mode())
+//		})
+//	}
 func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fyne.Window) bool {
 	if !asIsCheck.Checked && !platformCheck.Checked && !regionCheck.Checked {
 		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сортировки.", w)
@@ -84,24 +98,24 @@ func appendOutput(bindStr binding.String, msg string) error {
 	return nil
 }
 
-func RemoveGitFolder(dir string, output binding.String) error {
-	gitPath := filepath.Join(dir, ".git")
-
-	// Проверяем, существует ли .git
-	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
-		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
-		return nil
-	}
-
-	// Удаляем полностью
-	if err := os.RemoveAll(gitPath); err != nil {
-		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
-		return err
-	}
-
-	//appendOutput(output, "Папка .git удалена.\n")
-	return nil
-}
+//func RemoveGitFolder(dir string, output binding.String) error {
+//	gitPath := filepath.Join(dir, ".git")
+//
+//	// Проверяем, существует ли .git
+//	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
+//		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
+//		return nil
+//	}
+//
+//	// Удаляем полностью
+//	if err := os.RemoveAll(gitPath); err != nil {
+//		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
+//		return err
+//	}
+//
+//	//appendOutput(output, "Папка .git удалена.\n")
+//	return nil
+//}
 
 func saveConfig(cfg AppConfig, path string) error {
 	f, err := os.Create(path)
@@ -126,15 +140,18 @@ func loadConfig(path string) (*AppConfig, error) {
 	return &cfg, nil
 }
 
+// для остановки
+
 type AppConfig struct {
-	GitLabLogin  string `json:"gitlab_login"`
-	GitLabPass   string `json:"gitlab_pass_hash"`
-	NetboxToken  string `json:"netbox_token_hash"`
-	Mode         string `json:"mode"` // as-is / platform / region
-	SaveMode     string `json:"save_mode"`
-	ScheduleDays int    `json:"schedule_days"`
-	ScheduleTime string `json:"schedule_time"` // "HH:MM"
-	LastRun      string `json:"last_run,omitempty"`
+	GitLabLogin    string `json:"gitlab_login"`
+	GitLabPass     string `json:"gitlab_pass_hash"`
+	NetboxToken    string `json:"netbox_token_hash"`
+	Mode           string `json:"mode"` // as-is / platform / region
+	SaveMode       string `json:"save_mode"`
+	ScheduleDays   int    `json:"schedule_days"`
+	ScheduleTime   string `json:"schedule_time"` // "HH:MM"
+	LastRun        string `json:"last_run,omitempty"`
+	SchedulerState string `json:"scheduler_state"`
 }
 type ReadOnlyEntry struct {
 	widget.Entry
@@ -149,6 +166,18 @@ func NewReadOnlyEntry() *ReadOnlyEntry {
 // ❗ Полностью блокируем ввод с клавиатуры
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
 func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
+
+type CleanLightTheme struct{}
+
+//func (CleanLightTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
+//	if n == theme.ColorNameInputBackground || n == theme.ColorNameDisabled {
+//		return color.White // белый фон у полей и отключённых полей
+//	}
+//	if n == theme.ColorNameDisabled {
+//		return color.NRGBA{80, 80, 80, 255} // тёмно-серый текст (читаемо!)
+//	}
+//	return theme.LightTheme{}.Color(n, v)
+//}
 
 func main() {
 
@@ -172,7 +201,7 @@ func main() {
 	a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
 
 	w := a.NewWindow("GitLab Downloader")
-	w.Resize(fyne.NewSize(900, 700))
+	w.Resize(fyne.NewSize(600, 250))
 	w.SetFixedSize(true)
 	w.CenterOnScreen()
 
@@ -217,12 +246,14 @@ func main() {
 	// === END SYSTRAY ===
 
 	// Поля ввода
+
 	loginEntry := widget.NewEntry()
 	loginEntry.SetPlaceHolder("Введите логин GitLab")
-
+	loginEntry.TextStyle = fyne.TextStyle{}
 	passEntry := widget.NewEntry()
 	passEntry.Password = true
 	passEntry.SetPlaceHolder("Введите пароль GitLab")
+	passEntry.TextStyle = fyne.TextStyle{}
 
 	netboxEntry := widget.NewEntry()
 	netboxEntry.SetPlaceHolder("API NetBox Token")
@@ -241,16 +272,21 @@ func main() {
 	output.MultiLine = true
 	//output.Disable()
 	output.Bind(outputText)
-	output.SetMinRowsVisible(15)
+	//output.SetMinRowsVisible(15)
 	scroll := container.NewVScroll(output)
-	scroll.SetMinSize(fyne.NewSize(860, 400))
+	scroll.SetMinSize(fyne.NewSize(460, 250))
+	output.SetMinRowsVisible(15)
+	scroll.Offset = fyne.NewPos(0, 0)
+	output.Scroll = container.ScrollNone
+	// Убираем отступы окна, чтобы выглядело как настоящее приложение
+	//w.SetPadded(false)
 	//scroll.Offset = fyne.NewPos(0, scroll.Content.Size().Height)
-	scroll.Refresh()
-	scroll.ScrollToBottom()
-
+	//scroll.Refresh()
+	//scroll.ScrollToBottom()
+	w.CenterOnScreen()
 	asIsCheck := widget.NewCheck("Как есть", nil)
 	platformCheck := widget.NewCheck("Платформа", nil)
-	regionCheck := widget.NewCheck("Регион", nil)
+	regionCheck := widget.NewCheck("Регион          ", nil)
 
 	updateCheck := widget.NewCheck("Обновление", nil)
 	progressCheck := widget.NewCheck("Прогресс", nil)
@@ -260,11 +296,11 @@ func main() {
 
 		// --- Сортировка ---
 		if asIsCheck.Checked {
-			lines = append(lines, "🔎Сортировка: как есть (без изменений)\n")
+			lines = append(lines, "🔎Сортировка: как есть (без изменений).")
 		} else if platformCheck.Checked {
-			lines = append(lines, "🔎Сортировка: по платформам\n")
+			lines = append(lines, "🔎Сортировка: по платформам.")
 		} else if regionCheck.Checked {
-			lines = append(lines, "🔎Сортировка: по регионам\n")
+			lines = append(lines, "🔎Сортировка: по регионам.")
 		}
 
 		// --- Режим сохранения ---
@@ -345,10 +381,32 @@ func main() {
 	updateCheck.SetChecked(false)
 	progressCheck.SetChecked(false)
 
+	//blockInputs := func() {
+	//	loginEntry.Disable()
+	//	passEntry.Disable()
+	//	netboxEntry.Disable()
+	//	scheduleEntry.Disable()
+	//	timeEntry.Disable()
+	//
+	//}
+	//
+	//unblockInputs := func() {
+	//	loginEntry.Enable()
+	//	passEntry.Enable()
+	//	netboxEntry.Enable()
+	//	scheduleEntry.Enable()
+	//	timeEntry.Enable()
+	//}
+
 	// Восстанавливаем сохранённый режим
 	if cfg.SaveMode == "progress" {
 		updateCheck.SetChecked(false)
 		progressCheck.SetChecked(true)
+	}
+
+	if cfg.SaveMode == "update" {
+		updateCheck.SetChecked(true)
+		progressCheck.SetChecked(false)
 	}
 
 	if cfg.GitLabLogin != "" {
@@ -370,13 +428,31 @@ func main() {
 	}
 
 	if cfg.ScheduleDays > 0 {
-		scheduleEntry.SetText(fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)")
+		scheduleEntry.SetPlaceHolder(fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)")
 	}
 	if cfg.ScheduleTime != "" {
-		timeEntry.SetText(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
+		timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 	}
 
 	saveBtn := widget.NewButton("Сохранить", nil)
+
+	scheduleEntry.OnChanged = func(s string) {
+		if saveBtn.Text == "Сбросить" {
+			scheduleEntry.SetText("")
+			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
+		}
+	}
+	///чанги
+	timeEntry.OnChanged = func(s string) {
+		if saveBtn.Text == "Сбросить" {
+			timeEntry.SetText("")
+			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
+		}
+	}
+
+	startPauseBtn := widget.NewButton("Старт", nil)
+	startPauseBtn.Importance = widget.MediumImportance
+	//PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 
 	//записываем настройки
 	setConfig := func() {
@@ -395,59 +471,103 @@ func main() {
 
 		switch {
 		case updateCheck.Checked:
-			cfg.SaveMode = "Update"
+			cfg.SaveMode = "update"
 		case progressCheck.Checked:
-			cfg.SaveMode = "Progress"
+			cfg.SaveMode = "progress"
 		}
 
 		//cfg.SaveMode = modeRadio.Selected
 
-		days, _ := strconv.Atoi(scheduleEntry.Text)
-		if days < 1 {
-			days = 1
-		} else if days > 31 {
-			days = 31
+		//day, err := strconv.Atoi(scheduleEntry.Text)
+		//if days < 1 {
+		//	days = 1
+		//} else if
+		//{else if days > 31 {
+		//	days = 31
+		//}
+
+		//days := 1 // значение по умолчанию
+
+		daysRaw := strings.TrimSpace(scheduleEntry.Text)
+		days := 1 // значение по умолчанию
+
+		if daysRaw != "" {
+			d, err := strconv.Atoi(daysRaw)
+			if err != nil || d < 1 || d > 31 {
+
+				dialog.ShowInformation(
+					"Ой!",
+					"Введите число от 1 до 31.\n",
+					w,
+				)
+
+				return // ← прерываем сохранение, если ошибка
+
+			}
+			days = d
 		}
+		// Если поле пустое — оставляем 1 (или можно cfg.ScheduleDays, если уже есть)
+		cfg.ScheduleDays = days
 
 		timeValue := strings.TrimSpace(timeEntry.Text)
 		if timeValue == "" {
 			timeValue = "00:00"
 			cfg.ScheduleTime = timeValue
+		} else if !isValidTime(timeValue) {
+			dialog.ShowInformation(
+				"Ой!",
+				"Введите время в формате ЧЧ:ММ.\n",
+				w,
+			)
+
+			return
+
 		} else {
 			cfg.ScheduleTime = strings.TrimSpace(timeEntry.Text)
 		}
 
 		cfg.ScheduleDays = days
 		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
-
 		if err := saveConfig(*cfg, configPath); err != nil {
 			appendOutput(outputText, fmt.Sprintf("❌ Ошибка сохранения: %v", err))
 		} else {
 			loginEntry.SetText("")
 			loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
+			//loginEntry.TextStyle = fyne.TextStyle{Bold: false, Italic: false, Monospace: false}
 			passEntry.SetText("")
 			passEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
+			//passEntry.TextStyle = fyne.TextStyle{Bold: false, Italic: false, Monospace: false}
 			netboxEntry.SetText("")
 			netboxEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
+			//netboxEntry.TextStyle = fyne.TextStyle{Bold: false, Italic: false, Monospace: false}
 			scheduleEntry.SetText("")
 			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
+			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 			appendOutput(outputText, "✅ Настройки сохранены.")
+			saveBtn.SetText("Сбросить")
+			//blockInputs()
+
 		}
 	}
+
 	//если конфига есть, то меняет название кнопки
 	updateButtonState := func() {
 		if _, err := os.Stat(configPath); err == nil {
 			saveBtn.SetText("Сбросить")
+			//blockInputs()
 		} else {
 			saveBtn.SetText("Сохранить")
+			//unblockInputs()
 		}
 	}
+
 	updateButtonState()
 	outputView := widget.NewLabelWithData(outputText)
 	//сбросить конфигу
 	resetConfig := func() {
+		saveBtn.SetText("Сохранить")
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
 			return
@@ -465,13 +585,17 @@ func main() {
 		platformCheck.SetChecked(false)
 		regionCheck.SetChecked(false)
 
+		updateCheck.SetChecked(false)
+		progressCheck.SetChecked(false)
+
 		scheduleEntry.SetText("")
 		scheduleEntry.SetPlaceHolder("Интервал (дней, 1–31)")
 		timeEntry.SetText("")
 		timeEntry.SetPlaceHolder("Время обновления (HH:MM)")
 		appendOutput(outputText, "⚙️ Настройки сброшены.\n")
+		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 		updateButtonState()
-
+		//unblockInputs()
 	}
 	//действие кнопки "скачать/сохранить"
 	saveBtn.OnTapped = func() {
@@ -496,6 +620,7 @@ func main() {
 				dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
 				return
 			}
+
 		}
 		//
 		if saveBtn.Text == "Сбросить" {
@@ -505,7 +630,9 @@ func main() {
 				func(confirmed bool) {
 					if confirmed {
 						resetConfig() //функция сброса
+						//unblockInputs()
 						saveBtn.SetText("Сохранить")
+
 					}
 				},
 				w, // ← окно, к которому относится диалог
@@ -513,13 +640,34 @@ func main() {
 			return
 		} else {
 			setConfig() //функция установки
-			saveBtn.SetText("Сбросить")
+			//blockInputs()
+
 		}
 	}
 
 	// 1. Создаём кнопку для загрузки
 	cloneBtn := widget.NewButton("Скачать", nil)
 	cloneBtn.Importance = widget.HighImportance
+
+	loginEntry.OnChanged = func(s string) {
+		if saveBtn.Text == "Сбросить" {
+			loginEntry.SetText("")
+			loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
+		}
+	}
+	passEntry.OnChanged = func(s string) {
+		if saveBtn.Text == "Сбросить" {
+			passEntry.SetText("")
+			passEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
+		}
+	}
+
+	netboxEntry.OnChanged = func(s string) {
+		if saveBtn.Text == "Сбросить" {
+			netboxEntry.SetText("")
+			netboxEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
+		}
+	}
 
 	allBlock := func() {
 		cloneBtn.Disable()
@@ -668,8 +816,25 @@ func main() {
 	cloneButtonContainer := container.NewHBox(layout.NewSpacer(), cloneBtn, layout.NewSpacer())
 
 	saveBtn.Resize(fyne.NewSize(140, 40))
-	saveButtonContainer := container.NewHBox(layout.NewSpacer(), saveBtn, layout.NewSpacer())
-	sortLabel := widget.NewLabel("Сортировка:    ")
+	startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, w)
+	PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+	//startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, w)
+
+	//// Добавляешь в интерфейс
+	//saveButtonContainer := container.NewHBox(
+	//	layout.NewSpacer(),
+	//	saveBtn,
+	//	startPauseBtn,
+	//	layout.NewSpacer(),
+	//)
+	//saveButtonContainer := container.NewHBox(layout.NewSpacer(), saveBtn, layout.NewSpacer())
+	saveButtonContainer := container.NewHBox(
+		layout.NewSpacer(),
+		saveBtn,
+		startPauseBtn, // ← вот она!
+		layout.NewSpacer(),
+	)
+	sortLabel := widget.NewLabel("Сортировка:      ")
 	sortLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	sortBox := container.NewGridWithColumns(3,
@@ -684,7 +849,7 @@ func main() {
 	)
 
 	passLabel := widget.NewLabel("Режим работы:")
-	passLabel.TextStyle = fyne.TextStyle{Bold: false}
+	passLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	passBox := container.NewGridWithColumns(3,
 		container.NewCenter(updateCheck),
@@ -705,20 +870,22 @@ func main() {
 	//centeredModeBox := container.NewCenter(modeCard)
 
 	//запуск расписания
-	if cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
-		go scheduler.Start(
-			configPath,       // ← путь к файлу
-			cfg.ScheduleDays, // ← дни
-			cfg.ScheduleTime, // ← время
-			cfg.LastRun,      // ← текущий LastRun
-			func(newLastRun string) { // ← callback: обновляем cfg и сохраняем
-				cfg.LastRun = newLastRun
-				_ = saveConfig(*cfg, configPath)
-			},
-			func() { cloneBtn.OnTapped() }, // ← действие
-			outputText,
-		)
-	}
+	//if cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
+	//	go scheduler.Start(
+	//		configPath,       // ← путь к файлу
+	//		cfg.ScheduleDays, // ← дни
+	//		cfg.ScheduleTime, // ← время
+	//		cfg.LastRun,      // ← текущий LastRun
+	//		func(newLastRun string) { // ← callback: обновляем cfg и сохраняем
+	//			cfg.LastRun = newLastRun
+	//			_ = saveConfig(*cfg, configPath)
+	//		},
+	//		func() { cloneBtn.OnTapped() }, // ← действие
+	//		outputText,
+	//		cancel,
+	//	)
+	//
+	//}
 
 	// Сборка формы
 	form := container.NewVBox(
@@ -732,6 +899,7 @@ func main() {
 
 		cloneButtonContainer,
 		scroll,
+		//saveButtonContainer := container.NewHBox(layout.NewSpacer(),  saveBtn,  startPauseBtn  )
 		saveButtonContainer,
 		scheduleEntry,
 		timeEntry,

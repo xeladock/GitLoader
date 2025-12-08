@@ -26,6 +26,7 @@ func Start(
 	onUpdateLastRun func(string), // ← сохраняет LastRun в config.json
 	cloneAction func(),
 	output binding.String,
+	cancel <-chan struct{},
 ) {
 	if scheduleDays <= 0 || scheduleTime == "" {
 		return
@@ -49,7 +50,7 @@ func Start(
 	appendLog(output, fmt.Sprintf("Планировщик запущен.\n"))
 
 	time.AfterFunc(1*time.Second, func() {
-		scheduleNext(cfgPath, targetTime, interval, lastRun, onUpdateLastRun, cloneAction, output)
+		scheduleNext(cfgPath, targetTime, interval, lastRun, onUpdateLastRun, cloneAction, output, cancel)
 	})
 }
 
@@ -60,6 +61,7 @@ func scheduleNext(
 	onUpdateLastRun func(string),
 	cloneAction func(),
 	output binding.String,
+	cancel <-chan struct{},
 ) {
 	now := time.Now()
 	loc := now.Location()
@@ -94,6 +96,13 @@ func scheduleNext(
 		delay.Hours(), math.Mod(delay.Minutes(), 60)))
 
 	time.AfterFunc(delay, func() {
+		select {
+		case <-cancel:
+			appendLog(output, "Планировщик остановлен.\n")
+			return
+		default:
+		}
+
 		fyne.Do(func() {
 			appendLog(output, fmt.Sprintf("Скачивание по расписанию: %s\n", time.Now().Format("15:04 02.01.2006")))
 			cloneAction()
@@ -104,7 +113,7 @@ func scheduleNext(
 		onUpdateLastRun(newLastRun)
 
 		// Следующий запуск
-		scheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output)
+		scheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel)
 	})
 }
 
