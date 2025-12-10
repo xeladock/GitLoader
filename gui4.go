@@ -30,6 +30,7 @@ import (
 
 var trayIcon []byte
 var isAutoRun = false // ← флаг: запущено ли по расписанию
+
 func isValidTime(s string) bool {
 	if len(s) != 5 {
 		return false
@@ -283,8 +284,8 @@ func main() {
 	// Убираем отступы окна, чтобы выглядело как настоящее приложение
 	//w.SetPadded(false)
 	//scroll.Offset = fyne.NewPos(0, scroll.Content.Size().Height)
-	//scroll.Refresh()
-	//scroll.ScrollToBottom()
+	scroll.Refresh()
+	scroll.ScrollToBottom()
 	w.CenterOnScreen()
 	asIsCheck := widget.NewCheck("Как есть", nil)
 	platformCheck := widget.NewCheck("Платформа", nil)
@@ -461,6 +462,12 @@ func main() {
 		cfg.GitLabLogin = loginEntry.Text
 		cfg.GitLabPass = passEntry.Text
 		cfg.NetboxToken = netboxEntry.Text
+		//
+		//if startPauseBtn.Text == "Старт" {
+		//	cfg.SchedulerState = "paused"
+		//} else {
+		//	cfg.SchedulerState = "running"
+		//}
 
 		switch {
 		case asIsCheck.Checked:
@@ -547,6 +554,7 @@ func main() {
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+			_ = saveConfig(cfg, configPath)
 			appendOutput(outputText, "✅ Настройки сохранены.")
 			saveBtn.SetText("Сбросить")
 			//blockInputs()
@@ -624,6 +632,7 @@ func main() {
 			}
 
 		}
+
 		//
 		if saveBtn.Text == "Сбросить" {
 			dialog.ShowConfirm(
@@ -679,6 +688,9 @@ func main() {
 		regionCheck.Disable()
 		progressCheck.Disable()
 		updateCheck.Disable()
+		startPauseBtn.Disable()
+		//startPauseBtn.Enable()
+		//btn.Disable()
 	}
 
 	allUnblock := func() {
@@ -689,6 +701,7 @@ func main() {
 		regionCheck.Enable()
 		progressCheck.Enable()
 		updateCheck.Enable()
+		//startPauseBtn.Enable()
 	}
 
 	//passChecks.Horizontal = true
@@ -768,7 +781,7 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "Сохранено успешно!\n")
+					_ = appendOutput(outputText, "Все операции выполнены!\n")
 				}
 			} else {
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
@@ -777,12 +790,13 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "Сохранено успешно!\n")
+					_ = appendOutput(outputText, "Все операции выполнены!\n")
 				}
 			}
 
 			cfg.LastRun = time.Now().Format(time.RFC3339)
-			_ = saveConfig(cfg, configPath)
+
+			//_ = saveConfig(cfg, configPath)
 
 			fyne.Do(func() {
 				scroll.ScrollToBottom()
@@ -813,7 +827,8 @@ func main() {
 				func(confirmed bool) {
 					if confirmed {
 						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
-						startDownload() // ← запускаем скачивание
+						startDownload()
+						// ← запускаем скачивание
 					}
 				},
 				w,

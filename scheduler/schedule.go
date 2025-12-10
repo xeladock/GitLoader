@@ -52,6 +52,18 @@ func Start(
 	//})
 }
 
+func clearLogKeepHeader() {
+	outputText := binding.NewString()
+	current, _ := outputText.Get()
+	lines := strings.Split(current, "\n")
+
+	// Оставляем только последние 2 строки (заголовок)
+	if len(lines) > 2 {
+		header := strings.Join(lines[len(lines)-3:], "\n") // -3 потому что последняя пустая
+		outputText.Set(header + "\n")
+	}
+}
+
 func ScheduleNext(
 	cfgPath string,
 	targetTime, interval time.Duration,
@@ -94,7 +106,7 @@ func ScheduleNext(
 	if printNext {
 		hours := int(delay.Hours())
 		minutes := int(delay.Minutes()) % 60
-		appendLog(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)",
+		appendLog(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
 			hours, minutes))
@@ -109,6 +121,7 @@ func ScheduleNext(
 		}
 
 		fyne.Do(func() {
+			clearLogKeepHeader()
 			appendLog(output, fmt.Sprintf("Скачивание по расписанию: %s в %s\n", now.Format("02.01.2006"), now.Format("15:04")))
 			cloneAction()
 		})

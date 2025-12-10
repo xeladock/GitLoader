@@ -14,10 +14,49 @@ import (
 )
 
 var (
-	cfg              *config.AppConfig
+	//btn              *widget.Button
+	//cfg              *config.AppConfig
 	schedulerRunning bool
 	schedulerCancel  chan struct{}
 )
+
+//func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
+//	now := time.Now()
+//	loc := now.Location()
+//
+//	// Парсим время HH:MM
+//	parts := strings.Split(timeStr, ":")
+//	hour, _ := strconv.Atoi(parts[0])
+//	minute, _ := strconv.Atoi(parts[1])
+//
+//	interval := 24 * time.Hour * time.Duration(days)
+//
+//	// Базовая точка — последний запуск или "давно"
+//	var base time.Time
+//	if lastRunStr != "" {
+//		last, err := time.Parse(time.RFC3339, lastRunStr)
+//		if err != nil || last.IsZero() {
+//			last = now.Add(-interval * 2)
+//		}
+//		base = last
+//	} else {
+//		base = now.Add(-interval)
+//	}
+//
+//	// Следующий запуск после base
+//	next := base.Add(interval)
+//
+//	// Приводим к нужному времени дня
+//	next = time.Date(next.Year(), next.Month(), next.Day(), hour, minute, 0, 0, loc)
+//
+//	// Если уже прошло сегодня — переносим на завтра
+//	todayTarget := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//	if !now.Before(todayTarget) {
+//		next = todayTarget.Add(interval)
+//	}
+//
+//	return next
+//}
 
 // Глобальная функция для цвета и текста
 func updateButtonAppearance(btn *widget.Button, isRunning bool) {
@@ -39,9 +78,10 @@ func PauseUpdateButtonState(btn *widget.Button, cfg *config.AppConfig, configPat
 		btn.Disable()
 		btn.SetText("Старт")
 		return
+	} else {
+		btn.Enable()
 	}
 
-	btn.Enable()
 	updateButtonAppearance(btn, cfg.SchedulerState == "running") // ← ПРАВИЛЬНО: true если "running", false если "paused"
 }
 
@@ -60,7 +100,21 @@ func CreateStartPauseButton(
 		updateButtonAppearance(btn, true)
 		schedulerRunning = true
 		schedulerCancel = make(chan struct{})
-		go startScheduler(cfg, configPath, cloneAction, output, btn)
+		isAutoRun = true
+		go scheduler.Start(
+			configPath,
+			cfg.ScheduleDays,
+			cfg.ScheduleTime,
+			cfg.LastRun,
+			func(newLastRun string) {
+				cfg.LastRun = newLastRun
+				_ = saveConfig(cfg, configPath)
+			},
+			cloneAction,
+			output,
+			schedulerCancel,
+		)
+
 	} else if cfg.SchedulerState == "paused" {
 		updateButtonAppearance(btn, false)
 		fyne.Do(func() {
@@ -97,20 +151,11 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 		cfg.LastRun,
 		func(newLastRun string) {
 			cfg.LastRun = newLastRun
-			_ = saveConfig(cfg, configPath)
+			//_ = saveConfig(cfg, configPath)
 		},
 
 		func() {
 			fyne.Do(func() {
-				//nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
-				//delay := time.Until(nextTime)
-				//hours := int(delay.Hours())
-				//minutes := int(delay.Minutes()) - hours*60
-				//
-				//appendOutput(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
-				//	nextTime.Format("02.01.2006"),
-				//	nextTime.Format("15:04"),
-				//	hours, minutes))
 				isAutoRun = true // ← пропускаем диалог
 				cloneAction()    // ← ЭТО ЗАПУСКАЕТ СКАЧИВАНИЕ!
 			})

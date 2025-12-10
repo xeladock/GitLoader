@@ -18,14 +18,33 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 )
 
+const configPath = "config.json"
+
 func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 	now := time.Now()
+
+	if timeStr == "" || !strings.Contains(timeStr, ":") {
+		// Если время не задано — возвращаем завтра 00:00
+		return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	}
+
+	parts := strings.Split(timeStr, ":")
+	if len(parts) < 2 {
+		return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	}
+
+	hour, errH := strconv.Atoi(parts[0])
+	minute, errM := strconv.Atoi(parts[1])
+	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+		return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	}
+
 	loc := now.Location()
 
 	// Парсим время HH:MM
-	parts := strings.Split(timeStr, ":")
-	hour, _ := strconv.Atoi(parts[0])
-	minute, _ := strconv.Atoi(parts[1])
+	parts = strings.Split(timeStr, ":")
+	hour, _ = strconv.Atoi(parts[0])
+	minute, _ = strconv.Atoi(parts[1])
 
 	interval := 24 * time.Hour * time.Duration(days)
 
@@ -106,18 +125,27 @@ func RunProgressMode(
 	//}
 
 	//_ = appendOutput(output, "Архивная копия сохранена успешно.")
+	if fileExists(configPath) {
+		nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
+		delay := time.Until(nextTime)
+		hours := int(delay.Hours())
+		minutes := int(delay.Minutes()) - hours*60
 
-	nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
-	delay := time.Until(nextTime)
-	hours := int(delay.Hours())
-	minutes := int(delay.Minutes()) - hours*60
-
-	appendOutput(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
-		nextTime.Format("02.01.2006"),
-		nextTime.Format("15:04"),
-		hours, minutes))
+		appendOutput(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+			nextTime.Format("02.01.2006"),
+			nextTime.Format("15:04"),
+			hours, minutes))
+	}
 
 	return nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false // ошибка или файла нет
+	}
+	return !info.IsDir() // существует и это файл
 }
 
 //scheduler.ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false) // ← true: печатаем в следующем цикле
