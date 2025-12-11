@@ -30,6 +30,29 @@ import (
 
 var trayIcon []byte
 var isAutoRun = false // ← флаг: запущено ли по расписанию
+var skipManualDialog = false
+
+func clearLogKeepHeader(textBinding binding.String, entry *widget.Entry) {
+	current, _ := textBinding.Get()
+	lines := strings.Split(current, "\n")
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	// Оставляем ТОЛЬКО последние 2 строки (заголовок)
+	if len(lines) > 2 {
+		header := strings.Join(lines[len(lines)-2:], "\n") + "\n\n"
+		textBinding.Set(header)
+	} else if len(lines) > 0 {
+		// Если меньше 2 строк — оставляем как есть, но с переносами
+		textBinding.Set(strings.Join(lines, "\n") + "\n\n")
+	}
+
+	// ← ПРОСТО ВЫЗЫВАЕМ Refresh() — без type assertion!
+	entry.Refresh()
+}
+
+// Вызов:
 
 func isValidTime(s string) bool {
 	if len(s) != 5 {
@@ -63,6 +86,7 @@ func isValidTime(s string) bool {
 //			return os.WriteFile(target, data, info.Mode())
 //		})
 //	}
+
 func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fyne.Window) bool {
 	if !asIsCheck.Checked && !platformCheck.Checked && !regionCheck.Checked {
 		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сортировки.", w)
@@ -166,11 +190,15 @@ func NewReadOnlyEntry() *ReadOnlyEntry {
 	return e
 }
 
+func (e *ReadOnlyEntry) Refresh() {
+	e.Entry.Refresh()
+}
+
 // ❗ Полностью блокируем ввод с клавиатуры
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
 func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
 
-type CleanLightTheme struct{}
+//type CleanLightTheme struct{}
 
 //func (CleanLightTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
 //	if n == theme.ColorNameInputBackground || n == theme.ColorNameDisabled {
@@ -701,7 +729,7 @@ func main() {
 		regionCheck.Enable()
 		progressCheck.Enable()
 		updateCheck.Enable()
-		//startPauseBtn.Enable()
+		startPauseBtn.Enable()
 	}
 
 	//passChecks.Horizontal = true
@@ -813,6 +841,7 @@ func main() {
 	}
 
 	cloneBtn.OnTapped = func() {
+
 		if isAutoRun {
 			isAutoRun = false // сбрасываем
 			startDownload()
@@ -826,6 +855,7 @@ func main() {
 				"Всё равно скачать сейчас?\n",
 				func(confirmed bool) {
 					if confirmed {
+						//clearLogKeepHeader(outputText, &output.Entry)
 						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
 						startDownload()
 						// ← запускаем скачивание

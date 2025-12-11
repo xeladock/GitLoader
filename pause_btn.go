@@ -100,7 +100,7 @@ func CreateStartPauseButton(
 		updateButtonAppearance(btn, true)
 		schedulerRunning = true
 		schedulerCancel = make(chan struct{})
-		isAutoRun = true
+		//isAutoRun = true
 		go scheduler.Start(
 			configPath,
 			cfg.ScheduleDays,
@@ -157,7 +157,8 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 		func() {
 			fyne.Do(func() {
 				isAutoRun = true // ← пропускаем диалог
-				cloneAction()    // ← ЭТО ЗАПУСКАЕТ СКАЧИВАНИЕ!
+				cloneAction()
+				isAutoRun = false // ← ЭТО ЗАПУСКАЕТ СКАЧИВАНИЕ!
 			})
 		},
 		//cloneAction,
