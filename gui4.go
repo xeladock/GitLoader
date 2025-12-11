@@ -638,12 +638,7 @@ func main() {
 	//действие кнопки "скачать/сохранить"
 	saveBtn.OnTapped = func() {
 		if saveBtn.Text == "Сохранить" {
-			if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
-				return
-			}
-			if !passModeSelected(updateCheck, progressCheck, w) {
-				return
-			}
+
 			//ошибка логина
 			if loginEntry.Text == "" && !fileExists(configPath) {
 				dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
@@ -656,6 +651,13 @@ func main() {
 			}
 			if netboxEntry.Text == "" && !fileExists(configPath) {
 				dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+				return
+			}
+
+			if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
+				return
+			}
+			if !passModeSelected(updateCheck, progressCheck, w) {
 				return
 			}
 
@@ -729,7 +731,9 @@ func main() {
 		regionCheck.Enable()
 		progressCheck.Enable()
 		updateCheck.Enable()
-		startPauseBtn.Enable()
+		if fileExists(configPath) {
+			startPauseBtn.Enable()
+		}
 	}
 
 	//passChecks.Horizontal = true
@@ -745,12 +749,30 @@ func main() {
 	//modeCard2 := widget.NewCard("", "", modeRow)
 	//modeRadioContainer := container.NewCenter(modeCard2)
 	startDownload := func() {
+
+		if loginEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
+			return
+		}
+
+		if passEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
+			return
+		}
+		if netboxEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+			return
+		}
+
 		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 			return
 		}
 		if !passModeSelected(updateCheck, progressCheck, w) {
 			return
 		}
+		outputText.Set("")
+		updateHint()
+		//clearLogKeepHeader(outputText, &output.Entry)
 
 		// ... проверки логина/пароля ...
 
