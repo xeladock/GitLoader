@@ -12,6 +12,8 @@ import (
 
 	"configtool.local/conf"
 	"configtool.local/progdl"
+	"fyne.io/fyne/v2/theme"
+
 	//"configtool.local/start_stop"
 	// "configtool.local/window_action" // removed, using systray instead
 	"fyne.io/fyne/v2"
@@ -20,7 +22,6 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/getlantern/systray"
 	//"github.com/tadvi/systray"
@@ -200,16 +201,18 @@ func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
 
 //type CleanLightTheme struct{}
 
-//func (CleanLightTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
-//	if n == theme.ColorNameInputBackground || n == theme.ColorNameDisabled {
-//		return color.White // белый фон у полей и отключённых полей
+//	func (CleanLightTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
+//		if n == theme.ColorNameInputBackground || n == theme.ColorNameDisabled {
+//			return color.White // белый фон у полей и отключённых полей
+//		}
+//		if n == theme.ColorNameDisabled {
+//			return color.NRGBA{80, 80, 80, 255} // тёмно-серый текст (читаемо!)
+//		}
+//		return theme.LightTheme{}.Color(n, v)
 //	}
-//	if n == theme.ColorNameDisabled {
-//		return color.NRGBA{80, 80, 80, 255} // тёмно-серый текст (читаемо!)
-//	}
-//	return theme.LightTheme{}.Color(n, v)
-//}
+type hiddenTheme struct{ fyne.Theme }
 
+func (hiddenTheme) ScrollBarSize() int { return 0 }
 func main() {
 
 	const configPath = "config.json"
@@ -227,7 +230,7 @@ func main() {
 
 	a := app.NewWithID("rt_gitloader")
 	a.Settings().SetTheme(theme.LightTheme())
-
+	//a.Settings().SetTheme(hiddenTheme{})
 	// Set Fyne app icon as well (optional)
 	a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
 
@@ -299,19 +302,35 @@ func main() {
 	//aaaa
 	outputText := binding.NewString()
 	//output := widget.NewMultiLineEntry()
+
 	output := NewReadOnlyEntry()
 	output.MultiLine = true
 	//output.Disable()
+
 	output.Bind(outputText)
+	//output.Wrapping = fyne.TextWrapWord
 	//output.SetMinRowsVisible(15)
-	scroll := container.NewVScroll(output)
+	//scroll := container.NewVScroll(output)
+	scroll := container.NewScroll(output)
+	//scroll.SetMinSize(fyne.NewSize(600, 300))
+	//scroll.SetMinSize(fyne.NewSize(600, 300))  // твой размер
+	//scroll.Resize(fyne.NewSize(600, 300))
+	//scroll.SetOverlayScrollbars(false)
+
 	scroll.SetMinSize(fyne.NewSize(460, 250))
+	//scroll.Resize(fyne.NewSize(460, 250))
 	output.SetMinRowsVisible(15)
 	scroll.Offset = fyne.NewPos(0, 0)
 	output.Scroll = container.ScrollNone
+	output.Validator = nil
+	//scroll.ShowScrollbarsOnlyWhenNeeded = true
+	//scroll.SetShowScrollbarsWhenNeeded(true)
+	//scroll.SetOverlayScrollbars(false)
 	// Убираем отступы окна, чтобы выглядело как настоящее приложение
-	//w.SetPadded(false)
+	w.SetPadded(false)
 	//scroll.Offset = fyne.NewPos(0, scroll.Content.Size().Height)
+	//scroll.SetMinSize(fyne.NewSize(600, 300))
+	//scroll.SetMaxSize(fyne.NewSize(600, 300))
 	scroll.Refresh()
 	scroll.ScrollToBottom()
 	w.CenterOnScreen()
@@ -832,6 +851,7 @@ func main() {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
 					_ = appendOutput(outputText, "Все операции выполнены!\n")
+					output.Wrapping = fyne.TextWrapWord
 				}
 			} else {
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
@@ -841,6 +861,7 @@ func main() {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
 					_ = appendOutput(outputText, "Все операции выполнены!\n")
+					output.Wrapping = fyne.TextWrapWord
 				}
 			}
 
