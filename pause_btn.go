@@ -9,6 +9,7 @@ import (
 	config "configtool.local/conf"
 	"configtool.local/scheduler"
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 )
@@ -90,6 +91,7 @@ func CreateStartPauseButton(
 	configPath string,
 	cloneAction func(),
 	output binding.String,
+	scroll *container.Scroll,
 	w fyne.Window,
 ) *widget.Button {
 
@@ -110,7 +112,14 @@ func CreateStartPauseButton(
 				cfg.LastRun = newLastRun
 				_ = saveConfig(cfg, configPath)
 			},
-			cloneAction,
+			func() {
+				fyne.Do(func() {
+					isAutoRun = true // ← обязательно ставим перед cloneAction
+					cloneAction()
+					isAutoRun = false // ← сбрасываем сразу после
+				})
+			},
+			//cloneAction,
 			output,
 			schedulerCancel,
 		)
@@ -126,16 +135,17 @@ func CreateStartPauseButton(
 
 	btn.OnTapped = func() {
 		if schedulerRunning {
-			stopScheduler(cfg, configPath, output, btn)
+			stopScheduler(cfg, configPath, output, btn, scroll)
 		} else {
-			startScheduler(cfg, configPath, cloneAction, output, btn)
+			startScheduler(cfg, configPath, cloneAction, output, btn, scroll)
+
 		}
 	}
 
 	return btn
 }
 
-func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func(), output binding.String, btn *widget.Button) {
+func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func(), output binding.String, btn *widget.Button, scroll *container.Scroll) {
 	if schedulerRunning {
 		return
 	}
@@ -169,11 +179,16 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 	fyne.Do(func() {
 		//isAutoRun = true
 		updateButtonAppearance(btn, true)
+		//scroll.ScrollToBottom()
+		scrollToBottom(scroll)
+		//scroll.Offset = fyne.NewPos(0, scroll.Offset.Y+1000) // ← прокрутка вниз
+		scroll.Refresh()
+		//scroll.ScrollToBottom() // ← обновление
 	})
 	//appendOutput(output, "Планировщик запущен\n")
 }
 
-func stopScheduler(cfg *config.AppConfig, configPath string, output binding.String, btn *widget.Button) {
+func stopScheduler(cfg *config.AppConfig, configPath string, output binding.String, btn *widget.Button, scroll *container.Scroll) {
 	if !schedulerRunning || schedulerCancel == nil {
 		return
 	}
@@ -184,6 +199,22 @@ func stopScheduler(cfg *config.AppConfig, configPath string, output binding.Stri
 
 	fyne.Do(func() {
 		updateButtonAppearance(btn, false)
+		//scroll.ScrollToBottom()
+		scrollToBottom(scroll)
+		//scroll.Offset = fyne.NewPos(0, scroll.Offset.Y+1000) // ← прокрутка вниз
+		scroll.Refresh()
+		//scroll.ScrollToBottom() // ← обновление
 	})
 	appendOutput(output, "Планировщик на паузе.\n")
+	//appendOutput(output, "")
+
+}
+
+func scrollToBottom(scroll *container.Scroll) {
+	scroll.ScrollToBottom()
+	// Принудительно ставим offset на максимум
+	fyne.Do(func() {
+		scroll.Offset = fyne.NewPos(0, scroll.Content.Size().Height+100) // +100 на всякий случай
+		scroll.Refresh()
+	})
 }

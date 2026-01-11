@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -13,7 +14,6 @@ import (
 	"configtool.local/conf"
 	"configtool.local/progdl"
 	"fyne.io/fyne/v2/theme"
-
 	//"configtool.local/start_stop"
 	// "configtool.local/window_action" // removed, using systray instead
 	"fyne.io/fyne/v2"
@@ -31,27 +31,27 @@ import (
 
 var trayIcon []byte
 var isAutoRun = false // ← флаг: запущено ли по расписанию
-var skipManualDialog = false
-
-func clearLogKeepHeader(textBinding binding.String, entry *widget.Entry) {
-	current, _ := textBinding.Get()
-	lines := strings.Split(current, "\n")
-	for len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-
-	// Оставляем ТОЛЬКО последние 2 строки (заголовок)
-	if len(lines) > 2 {
-		header := strings.Join(lines[len(lines)-2:], "\n") + "\n\n"
-		textBinding.Set(header)
-	} else if len(lines) > 0 {
-		// Если меньше 2 строк — оставляем как есть, но с переносами
-		textBinding.Set(strings.Join(lines, "\n") + "\n\n")
-	}
-
-	// ← ПРОСТО ВЫЗЫВАЕМ Refresh() — без type assertion!
-	entry.Refresh()
-}
+//var skipManualDialog = false
+//
+//func clearLogKeepHeader(textBinding binding.String, entry *widget.Entry) {
+//	current, _ := textBinding.Get()
+//	lines := strings.Split(current, "\n")
+//	for len(lines) > 0 && lines[len(lines)-1] == "" {
+//		lines = lines[:len(lines)-1]
+//	}
+//
+//	// Оставляем ТОЛЬКО последние 2 строки (заголовок)
+//	if len(lines) > 2 {
+//		header := strings.Join(lines[len(lines)-2:], "\n") + "\n\n"
+//		textBinding.Set(header)
+//	} else if len(lines) > 0 {
+//		// Если меньше 2 строк — оставляем как есть, но с переносами
+//		textBinding.Set(strings.Join(lines, "\n") + "\n\n")
+//	}
+//
+//	// ← ПРОСТО ВЫЗЫВАЕМ Refresh() — без type assertion!
+//	entry.Refresh()
+//}
 
 // Вызов:
 
@@ -125,6 +125,14 @@ func appendOutput(bindStr binding.String, msg string) error {
 	return nil
 }
 
+func appendOutput3(output binding.String, text string) {
+	if output == nil {
+		return
+	}
+	current, _ := output.Get()
+	_ = output.Set(current + text)
+}
+
 //func RemoveGitFolder(dir string, output binding.String) error {
 //	gitPath := filepath.Join(dir, ".git")
 //
@@ -191,9 +199,9 @@ func NewReadOnlyEntry() *ReadOnlyEntry {
 	return e
 }
 
-func (e *ReadOnlyEntry) Refresh() {
-	e.Entry.Refresh()
-}
+//func (e *ReadOnlyEntry) Refresh() {
+//	e.Entry.Refresh()
+//}
 
 // ❗ Полностью блокируем ввод с клавиатуры
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
@@ -249,8 +257,11 @@ func main() {
 		systray.Run(func() {
 			if len(trayIcon) > 0 {
 				systray.SetIcon(trayIcon)
+				//systray.SetTooltip("GitLab Downloader v0.71")
 			}
-			systray.SetTooltip("GitLab Downloader")
+			//systray.SetTooltip("GitLab Downloader")
+			systray.SetTitle("GitLab Downloader")
+			systray.SetTooltip("GitLab Downloader v1.0")
 
 			open := systray.AddMenuItem("Открыть", "Показать программу")
 			quit := systray.AddMenuItem("Выход", "Закрыть программу")
@@ -266,12 +277,14 @@ func main() {
 
 			go func() {
 				for range quit.ClickedCh {
+					// ← Всё, что касается Fyne — в UI-потоке
 					fyne.DoAndWait(func() {
-						w.Close()
+						w.Close() // ← закрываем окно
+						a.Quit()  // ← завершаем приложение (БЕЗ ОШИБКИ!)
 					})
-					systray.Quit()
-					a.Quit()
-					os.Exit(0)
+
+					systray.Quit() // ← это можно вне UI-потока
+					// os.Exit(0) — НЕ НУЖНО! a.Quit() уже завершает приложение
 				}
 			}()
 		}, func() {})
@@ -311,7 +324,7 @@ func main() {
 	//output.Wrapping = fyne.TextWrapWord
 	//output.SetMinRowsVisible(15)
 	//scroll := container.NewVScroll(output)
-	scroll := container.NewScroll(output)
+	scroll := container.NewVScroll(output)
 	//scroll.SetMinSize(fyne.NewSize(600, 300))
 	//scroll.SetMinSize(fyne.NewSize(600, 300))  // твой размер
 	//scroll.Resize(fyne.NewSize(600, 300))
@@ -320,7 +333,7 @@ func main() {
 	scroll.SetMinSize(fyne.NewSize(460, 250))
 	//scroll.Resize(fyne.NewSize(460, 250))
 	output.SetMinRowsVisible(15)
-	scroll.Offset = fyne.NewPos(0, 0)
+	//scroll.Offset = fyne.NewPos(0, 0)
 	output.Scroll = container.ScrollNone
 	output.Validator = nil
 	//scroll.ShowScrollbarsOnlyWhenNeeded = true
@@ -331,8 +344,9 @@ func main() {
 	//scroll.Offset = fyne.NewPos(0, scroll.Content.Size().Height)
 	//scroll.SetMinSize(fyne.NewSize(600, 300))
 	//scroll.SetMaxSize(fyne.NewSize(600, 300))
-	scroll.Refresh()
 	scroll.ScrollToBottom()
+	scroll.Refresh()
+
 	w.CenterOnScreen()
 	asIsCheck := widget.NewCheck("Как есть", nil)
 	platformCheck := widget.NewCheck("Платформа", nil)
@@ -814,12 +828,21 @@ func main() {
 
 		authURL := repoURL
 		if login != "" && pass != "" {
-			authURL = fmt.Sprintf("https://%s:%s@%s", login, pass, strings.TrimPrefix(repoURL, "https://"))
+			//passBytes, _ := base64.StdEncoding.DecodeString(pass)
+			//passString := string(passBytes)
+			encodedPass := url.QueryEscape(pass)
+			//doubleEncoded := url.QueryEscape(encodedPass)
+			authURL = fmt.Sprintf("https://%s:%s@%s", login, encodedPass, strings.TrimPrefix(repoURL, "https://"))
+			//println(authURL)
 		}
 
 		go func() {
 			cmd := exec.Command("git", "clone", "--depth", "1", authURL, targetDir)
+			cmd.Stdin = strings.NewReader(fmt.Sprintf("%s\n%s\n", login, pass))
 			outputBytes, err := cmd.CombinedOutput()
+			//if err != nil {
+			//	log.Printf("Ошибка git clone: %v\nВывод: %s", err, string(outputBytes))
+			//}
 			_ = string(outputBytes)
 
 			if err != nil {
@@ -851,7 +874,9 @@ func main() {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
 					_ = appendOutput(outputText, "Все операции выполнены!\n")
-					output.Wrapping = fyne.TextWrapWord
+					//output.Wrapping = fyne.TextWrapWord
+					//scroll.ScrollToBottom()
+					//scroll.Refresh()
 				}
 			} else {
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
@@ -861,7 +886,9 @@ func main() {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
 					_ = appendOutput(outputText, "Все операции выполнены!\n")
-					output.Wrapping = fyne.TextWrapWord
+					//scroll.ScrollToBottom()
+					//scroll.Refresh()
+					//output.Wrapping = fyne.TextWrapWord
 				}
 			}
 
@@ -916,7 +943,7 @@ func main() {
 	cloneButtonContainer := container.NewHBox(layout.NewSpacer(), cloneBtn, layout.NewSpacer())
 
 	saveBtn.Resize(fyne.NewSize(140, 40))
-	startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, w)
+	startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, scroll, w)
 	PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 	//startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, w)
 
