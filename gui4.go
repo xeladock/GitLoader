@@ -104,6 +104,14 @@ func passModeSelected(updateCheck, progressCheck *widget.Check, w fyne.Window) b
 	return true
 }
 
+func targetModeSelected(dcCheck, lanCheck *widget.Check, w fyne.Window) bool {
+	if !dcCheck.Checked && !lanCheck.Checked {
+		dialog.ShowInformation("Ой!", "⚠️ Выберите цель загрузки.", w)
+		return false
+	}
+	return true
+}
+
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -123,14 +131,6 @@ func appendOutput(bindStr binding.String, msg string) error {
 	}
 
 	return nil
-}
-
-func appendOutput3(output binding.String, text string) {
-	if output == nil {
-		return
-	}
-	current, _ := output.Get()
-	_ = output.Set(current + text)
 }
 
 //func RemoveGitFolder(dir string, output binding.String) error {
@@ -330,7 +330,7 @@ func main() {
 	//scroll.Resize(fyne.NewSize(600, 300))
 	//scroll.SetOverlayScrollbars(false)
 
-	scroll.SetMinSize(fyne.NewSize(460, 250))
+	scroll.SetMinSize(fyne.NewSize(760, 250))
 	//scroll.Resize(fyne.NewSize(460, 250))
 	output.SetMinRowsVisible(15)
 	//scroll.Offset = fyne.NewPos(0, 0)
@@ -355,6 +355,9 @@ func main() {
 	updateCheck := widget.NewCheck("Обновление", nil)
 	progressCheck := widget.NewCheck("Прогресс", nil)
 
+	dcCheck := widget.NewCheck("ЦОД", nil)
+	lanCheck := widget.NewCheck("ЛВС", nil)
+
 	updateHint := func() {
 		var lines []string
 
@@ -369,9 +372,17 @@ func main() {
 
 		// --- Режим сохранения ---
 		if updateCheck.Checked {
-			lines = append(lines, "📂Режим: Обновление текущих файлов (перезапись)\n")
+			lines = append(lines, "📂Режим: Обновление текущих файлов (перезапись)")
 		} else if progressCheck.Checked {
-			lines = append(lines, "📂Режим: Сохранение истории (архив по дням)\n")
+			lines = append(lines, "📂Режим: Сохранение истории (архив по дням)")
+		}
+
+		if dcCheck.Checked && lanCheck.Checked {
+			lines = append(lines, "ЦОД и ЛВС\n")
+		} else if dcCheck.Checked {
+			lines = append(lines, "ЦОД\n")
+		} else if lanCheck.Checked {
+			lines = append(lines, "ЛВС\n")
 		}
 
 		// Выводим
@@ -422,6 +433,14 @@ func main() {
 		updateHint()
 	}
 
+	dcCheck.OnChanged = func(checked bool) {
+		updateHint()
+	}
+
+	lanCheck.OnChanged = func(checked bool) {
+		updateHint()
+	}
+
 	// === ИНИЦИАЛИЗАЦИЯ ПОДСКАЗКИ ПРИ ЗАПУСКЕ ===
 	updateHint() // ← теперь текст появляется сразу!
 	//updateCheck.OnChanged = func(checked bool) {
@@ -444,6 +463,8 @@ func main() {
 	// По умолчанию — режим обновления
 	updateCheck.SetChecked(false)
 	progressCheck.SetChecked(false)
+	dcCheck.SetChecked(false)
+	lanCheck.SetChecked(false)
 
 	//blockInputs := func() {
 	//	loginEntry.Disable()
@@ -466,11 +487,20 @@ func main() {
 	if cfg.SaveMode == "progress" {
 		updateCheck.SetChecked(false)
 		progressCheck.SetChecked(true)
-	}
-
-	if cfg.SaveMode == "update" {
+	} else if cfg.SaveMode == "update" {
 		updateCheck.SetChecked(true)
 		progressCheck.SetChecked(false)
+	}
+
+	if cfg.TargetMode == "both" {
+		dcCheck.SetChecked(true)
+		lanCheck.SetChecked(true)
+	} else if cfg.TargetMode == "LAN" {
+		lanCheck.SetChecked(true)
+		dcCheck.SetChecked(false)
+	} else if cfg.TargetMode == "DC" {
+		dcCheck.SetChecked(true)
+		lanCheck.SetChecked(false)
 	}
 
 	if cfg.GitLabLogin != "" {
@@ -544,6 +574,15 @@ func main() {
 			cfg.SaveMode = "update"
 		case progressCheck.Checked:
 			cfg.SaveMode = "progress"
+		}
+
+		switch {
+		case lanCheck.Checked && dcCheck.Checked:
+			cfg.TargetMode = "both"
+		case lanCheck.Checked && !dcCheck.Checked:
+			cfg.TargetMode = "LAN"
+		case !lanCheck.Checked && dcCheck.Checked:
+			cfg.TargetMode = "DC"
 		}
 
 		//cfg.SaveMode = modeRadio.Selected
@@ -659,6 +698,9 @@ func main() {
 		updateCheck.SetChecked(false)
 		progressCheck.SetChecked(false)
 
+		dcCheck.SetChecked(false)
+		lanCheck.SetChecked(false)
+
 		scheduleEntry.SetText("")
 		scheduleEntry.SetPlaceHolder("Интервал (дней, 1–31)")
 		timeEntry.SetText("")
@@ -691,6 +733,9 @@ func main() {
 				return
 			}
 			if !passModeSelected(updateCheck, progressCheck, w) {
+				return
+			}
+			if !targetModeSelected(updateCheck, progressCheck, w) {
 				return
 			}
 
@@ -803,13 +848,17 @@ func main() {
 		if !passModeSelected(updateCheck, progressCheck, w) {
 			return
 		}
+		if !targetModeSelected(updateCheck, progressCheck, w) {
+			return
+		}
+
 		outputText.Set("")
 		updateHint()
 		//clearLogKeepHeader(outputText, &output.Entry)
 
 		// ... проверки логина/пароля ...
-
-		allBlock()
+		fyne.Do(allBlock)
+		//allBlock()
 		_ = appendOutput(outputText, "Начинаю загрузку из GitLab...\n")
 
 		login := strings.TrimSpace(loginEntry.Text)
@@ -838,7 +887,7 @@ func main() {
 
 		go func() {
 			cmd := exec.Command("git", "clone", "--depth", "1", authURL, targetDir)
-			cmd.Stdin = strings.NewReader(fmt.Sprintf("%s\n%s\n", login, pass))
+			//cmd.Stdin = strings.NewReader(fmt.Sprintf("%s\n%s\n", login, pass))
 			outputBytes, err := cmd.CombinedOutput()
 			//if err != nil {
 			//	log.Printf("Ошибка git clone: %v\nВывод: %s", err, string(outputBytes))
@@ -978,7 +1027,7 @@ func main() {
 	passLabel := widget.NewLabel("Режим работы:")
 	passLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	passBox := container.NewGridWithColumns(3,
+	passBox := container.NewGridWithColumns(2,
 		container.NewCenter(updateCheck),
 		container.NewCenter(progressCheck),
 	)
@@ -986,6 +1035,27 @@ func main() {
 	passBlock := container.NewHBox(
 		container.NewCenter(passLabel), // центрируем по вертикали
 		passCard,
+	)
+
+	targetLabel := widget.NewLabel("Цель:")
+	targetLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	targetBox := container.NewGridWithColumns(2,
+		container.NewCenter(dcCheck),
+		container.NewCenter(lanCheck),
+	)
+
+	targetCard := widget.NewCard("", "", targetBox)
+	targetBlock := container.NewHBox(
+		container.NewCenter(targetLabel), // центрируем по вертикали
+		targetCard,
+	)
+
+	passtargetButtonContainer := container.NewHBox(
+		//layout.NewSpacer(),
+		passBlock,
+		targetBlock,
+		//layout.NewSpacer(),
 	)
 
 	//modeBox := container.NewGridWithColumns(3,
@@ -1020,7 +1090,8 @@ func main() {
 		passEntry,
 		netboxEntry,
 		sortBlock,
-		passBlock,
+		passtargetButtonContainer,
+		//passBlock,
 		//centeredModeBox,
 		//modeRadioContainer,
 

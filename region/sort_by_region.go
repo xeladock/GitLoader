@@ -44,14 +44,14 @@ func GetRegionName(folderName string) string {
 // SortByRegion — главная функция для режима "Регион"
 func SortByRegion(srcDir, dstBase string, output binding.String) error {
 	// Создаём структуру: collected_files_clear/ЦОД/
-	dstDir := filepath.Join(dstBase, "ЦОД")
-	if err := os.MkdirAll(dstDir, 0777); err != nil {
-		return fmt.Errorf("не удалось создать папку ЦОД: %w", err)
-	}
+	//dstDir := filepath.Join(dstBase, "ЦОД")
+	//if err := os.MkdirAll(dstDir, 0777); err != nil {
+	//	return fmt.Errorf("не удалось создать папку ЦОД: %w", err)
+	//}
 
 	// Очищаем предыдущие результаты в ЦОД (по желанию — можно вынести в отдельную функцию)
 	os.RemoveAll(dstBase)
-	os.MkdirAll(dstDir, 0777)
+	//os.MkdirAll(dstDir, 0777)
 	//Append(output, "Очищена папка collected_files_clear/ЦОД\n")
 
 	entries, err := os.ReadDir(srcDir)
@@ -66,7 +66,7 @@ func SortByRegion(srcDir, dstBase string, output binding.String) error {
 
 		folderName := entry.Name()
 		regionName := GetRegionName(folderName)
-		targetDir := filepath.Join(dstDir, regionName)
+		targetDir := filepath.Join(regionName)
 
 		if err := os.MkdirAll(targetDir, 0777); err != nil {
 			Append(output, fmt.Sprintf("Ошибка создания папки %s: %v\n", regionName, err))
