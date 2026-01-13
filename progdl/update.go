@@ -2,6 +2,9 @@
 package progdl
 
 import (
+	"os"
+	"path/filepath"
+
 	"configtool.local/asis"
 	"configtool.local/platform"
 	"configtool.local/region"
@@ -12,13 +15,15 @@ import (
 // RunUpdateMode — текущий режим: просто обновляет ./config_files_clear
 func RunUpdateMode(
 	targetDir, sortedDst string,
-	asIs, platformMode, regionMode bool,
+	asIs, platformMode, regionMode, dcCheck, lanCheck bool,
 	netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
 ) error {
+	//wantDC := dcCheck.Checked
+	//wantLAN := lanCheck.Checked
 
-	_ = RemoveGitFolder(targetDir, output)
+	//_ = RemoveGitFolder(targetDir, output)
 
 	// === Сортировка (одинаковая для обоих режимов) ===
 	if platformMode {
@@ -27,18 +32,30 @@ func RunUpdateMode(
 		}
 	}
 	if asIs {
-		if err := asis.MoveAsIs(targetDir, sortedDst, output); err != nil {
+		if err := asis.MoveAsIs(targetDir, sortedDst, output, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}
 	if regionMode {
-		if err := region.SortByRegion(targetDir, sortedDst, output); err != nil {
+		if err := region.SortByRegion(targetDir, sortedDst, output, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}
 
 	// === Перезапись в актуальную папку ===
 	currentDir := "./config_files_clear"
+
+	startDir := "./configs"
+	hasDC := filepath.Join(startDir, "ЦОД")
+	hasLAN := filepath.Join(startDir, "ЛВС")
+
+	if dirExists(hasDC) {
+		currentDir = hasDC
+	}
+
+	if dirExists(hasLAN) {
+		currentDir = hasLAN
+	}
 	//_ = appendOutput(output, "Обновление текущих файлов...\n")
 
 	// Просто перезаписываем содержимое — без удаления папки целиком
@@ -48,4 +65,12 @@ func RunUpdateMode(
 
 	//_ = appendOutput(output, "Текущие файлы успешно обновлены.\n")
 	return nil
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }

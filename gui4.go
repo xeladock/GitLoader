@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -133,24 +134,24 @@ func appendOutput(bindStr binding.String, msg string) error {
 	return nil
 }
 
-//func RemoveGitFolder(dir string, output binding.String) error {
-//	gitPath := filepath.Join(dir, ".git")
-//
-//	// Проверяем, существует ли .git
-//	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
-//		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
-//		return nil
-//	}
-//
-//	// Удаляем полностью
-//	if err := os.RemoveAll(gitPath); err != nil {
-//		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
-//		return err
-//	}
-//
-//	//appendOutput(output, "Папка .git удалена.\n")
-//	return nil
-//}
+func RemoveGitFolder(dir string, output binding.String) error {
+	gitPath := filepath.Join(dir, ".git")
+
+	// Проверяем, существует ли .git
+	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
+		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
+		return nil
+	}
+
+	// Удаляем полностью
+	if err := os.RemoveAll(gitPath); err != nil {
+		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
+		return err
+	}
+	//time.Sleep(1)
+	//appendOutput(output, "Папка .git удалена.\n")
+	return nil
+}
 
 func saveConfig(cfg *config.AppConfig, path string) error {
 	f, err := os.Create(path)
@@ -232,7 +233,6 @@ func main() {
 		cfg = &config.AppConfig{}
 	}
 
-	repoURL := "https://configs.net.rt.ru/dc/configs.git"
 	targetDir := "./configs" // куда клонируем репо
 	sortedDst := "./config_files_clear"
 
@@ -848,7 +848,7 @@ func main() {
 		if !passModeSelected(updateCheck, progressCheck, w) {
 			return
 		}
-		if !targetModeSelected(updateCheck, progressCheck, w) {
+		if !targetModeSelected(dcCheck, lanCheck, w) {
 			return
 		}
 
@@ -874,24 +874,26 @@ func main() {
 		if token == "" && cfg.NetboxToken != "" {
 			token = cfg.NetboxToken
 		}
+		//!загрузка ЦОД
+		if dcCheck.Checked {
 
-		authURL := repoURL
-		if login != "" && pass != "" {
-			//passBytes, _ := base64.StdEncoding.DecodeString(pass)
-			//passString := string(passBytes)
-			encodedPass := url.QueryEscape(pass)
-			//doubleEncoded := url.QueryEscape(encodedPass)
-			authURL = fmt.Sprintf("https://%s:%s@%s", login, encodedPass, strings.TrimPrefix(repoURL, "https://"))
-			//println(authURL)
-		}
+			repoURL := "https://configs.net.rt.ru/dc/configs.git"
+			authURL := repoURL
+			dstDir := filepath.Join(targetDir, "ЦОД")
 
-		go func() {
-			cmd := exec.Command("git", "clone", "--depth", "1", authURL, targetDir)
-			//cmd.Stdin = strings.NewReader(fmt.Sprintf("%s\n%s\n", login, pass))
+			if login != "" && pass != "" {
+				//passBytes, _ := base64.StdEncoding.DecodeString(pass)
+				//passString := string(passBytes)
+				encodedPass := url.QueryEscape(pass)
+				//doubleEncoded := url.QueryEscape(encodedPass)
+				authURL = fmt.Sprintf("https://%s:%s@%s", login, encodedPass, strings.TrimPrefix(repoURL, "https://"))
+				//println(authURL)
+			}
+
+			cmd := exec.Command("git", "clone", "--depth", "1", authURL, dstDir)
+
 			outputBytes, err := cmd.CombinedOutput()
-			//if err != nil {
-			//	log.Printf("Ошибка git clone: %v\nВывод: %s", err, string(outputBytes))
-			//}
+
 			_ = string(outputBytes)
 
 			if err != nil {
@@ -911,6 +913,9 @@ func main() {
 				fyne.Do(allUnblock)
 				return
 			}
+			if err := RemoveGitFolder(dstDir, outputText); err != nil {
+				return
+			}
 
 			// ВСЁ НОРМА — запускаем нужный режим
 			isProgressMode := progressCheck.Checked
@@ -918,32 +923,31 @@ func main() {
 			if isProgressMode {
 				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(targetDir, sortedDst, cfg,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "Все операции выполнены!\n")
-					//output.Wrapping = fyne.TextWrapWord
-					//scroll.ScrollToBottom()
-					//scroll.Refresh()
+
+					_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+
 				}
 			} else {
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(targetDir, sortedDst,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "Все операции выполнены!\n")
-					//scroll.ScrollToBottom()
-					//scroll.Refresh()
-					//output.Wrapping = fyne.TextWrapWord
+					if dcCheck.Checked && lanCheck.Checked {
+						return
+					} else {
+						_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+					}
+
 				}
 			}
 
 			cfg.LastRun = time.Now().Format(time.RFC3339)
-
-			//_ = saveConfig(cfg, configPath)
 
 			fyne.Do(func() {
 				scroll.ScrollToBottom()
@@ -951,12 +955,85 @@ func main() {
 				allUnblock()
 			})
 
-			//if runErr != nil {
-			//	_ = appendOutput(outputText, "Ошибка выполнения: "+runErr.Error()+"\n")
-			//}
-			//else _ = appendOutput(outputText, "Готово!\n")
-			//}
-		}()
+		}
+
+		if lanCheck.Checked {
+
+			repoURL := "https://configs.net.rt.ru/lan/configs.git"
+			authURL := repoURL
+			dstDir := filepath.Join(targetDir, "ЛВС")
+			if login != "" && pass != "" {
+				//passBytes, _ := base64.StdEncoding.DecodeString(pass)
+				//passString := string(passBytes)
+				encodedPass := url.QueryEscape(pass)
+				//doubleEncoded := url.QueryEscape(encodedPass)
+				authURL = fmt.Sprintf("https://%s:%s@%s", login, encodedPass, strings.TrimPrefix(repoURL, "https://"))
+				//println(authURL)
+			}
+
+			cmd := exec.Command("git", "clone", "--depth", "1", authURL, dstDir)
+			//RemoveGitFolder(dstDir, outputText)
+			outputBytes, err := cmd.CombinedOutput()
+
+			_ = string(outputBytes)
+
+			if err != nil {
+
+				switch {
+				case strings.Contains(string(outputBytes), "Authentication failed"):
+					_ = appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
+				case strings.Contains(string(outputBytes), "not found"):
+					_ = appendOutput(outputText, "Ошибка: git не найден в PATH\n")
+				case strings.Contains(string(outputBytes), "Could not resolve host"):
+					_ = appendOutput(outputText, "Ошибка: нет связи или сервер недоступен\n")
+				case strings.Contains(string(outputBytes), "Repository not found"):
+					_ = appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
+				default:
+					_ = appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
+				}
+				//_ = RemoveGitFolder(dstDir, outputText)
+				fyne.Do(allUnblock)
+				return
+			}
+
+			if err := RemoveGitFolder(dstDir, outputText); err != nil {
+				return
+			}
+
+			// ВСЁ НОРМА — запускаем нужный режим
+			isProgressMode := progressCheck.Checked
+
+			if isProgressMode {
+				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
+				if err := progdl.RunProgressMode(targetDir, sortedDst, cfg,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
+					token, outputText, scroll); err != nil {
+					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+				} else {
+					_ = appendOutput(outputText, "Все операции выполнены!\n")
+
+				}
+			} else {
+				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
+				if err := progdl.RunUpdateMode(targetDir, sortedDst,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
+					token, outputText, scroll); err != nil {
+					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+				} else {
+					_ = appendOutput(outputText, "Все операции выполнены!\n")
+				}
+			}
+
+			cfg.LastRun = time.Now().Format(time.RFC3339)
+
+			fyne.Do(func() {
+				scroll.ScrollToBottom()
+				scroll.Refresh()
+				allUnblock()
+			})
+
+		}
+
 	}
 
 	cloneBtn.OnTapped = func() {
@@ -976,7 +1053,9 @@ func main() {
 					if confirmed {
 						//clearLogKeepHeader(outputText, &output.Entry)
 						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
-						startDownload()
+						go func() {
+							startDownload()
+						}()
 						// ← запускаем скачивание
 					}
 				},
@@ -984,7 +1063,7 @@ func main() {
 			)
 		} else {
 			// Если расписания нет — скачиваем сразу
-			startDownload()
+			go startDownload()
 		}
 	}
 

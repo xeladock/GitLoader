@@ -79,7 +79,7 @@ func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 func RunProgressMode(
 	targetDir, sortedDst string,
 	cfg *config.AppConfig,
-	asIs, platformMode, regionMode bool,
+	asIs, platformMode, regionMode, dcCheck, lanCheck bool,
 	netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
@@ -90,7 +90,7 @@ func RunProgressMode(
 	if err := os.MkdirAll(datedDir, 0777); err != nil {
 		return err
 	}
-	_ = RemoveGitFolder(targetDir, output)
+	//_ = RemoveGitFolder(targetDir, output)
 
 	// === Та же сортировка ===
 	if platformMode {
@@ -99,12 +99,12 @@ func RunProgressMode(
 		}
 	}
 	if asIs {
-		if err := asis.MoveAsIs(targetDir, datedDir, output); err != nil {
+		if err := asis.MoveAsIs(targetDir, datedDir, output, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}
 	if regionMode {
-		if err := region.SortByRegion(targetDir, datedDir, output); err != nil {
+		if err := region.SortByRegion(targetDir, datedDir, output, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}
@@ -165,6 +165,11 @@ func RemoveGitFolder(dir string, output binding.String) error {
 	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
 		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
 		return nil
+	}
+
+	err := os.Chmod(gitPath, 0777)
+	if err != nil {
+		return err
 	}
 
 	// Удаляем полностью
