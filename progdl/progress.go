@@ -94,7 +94,7 @@ func RunProgressMode(
 
 	// === Та же сортировка ===
 	if platformMode {
-		if err := platform.SortFilesByPlatform(targetDir, datedDir, netboxToken, output, scroll); err != nil {
+		if err := platform.SortFilesByPlatform(targetDir, datedDir, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}
@@ -104,7 +104,7 @@ func RunProgressMode(
 		}
 	}
 	if regionMode {
-		if err := region.SortByRegion(targetDir, datedDir, output, dcCheck, lanCheck); err != nil {
+		if err := region.SortByRegion(targetDir, datedDir, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}

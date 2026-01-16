@@ -27,7 +27,7 @@ func RunUpdateMode(
 
 	// === Сортировка (одинаковая для обоих режимов) ===
 	if platformMode {
-		if err := platform.SortFilesByPlatform(targetDir, sortedDst, netboxToken, output, scroll); err != nil {
+		if err := platform.SortFilesByPlatform(targetDir, sortedDst, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}
@@ -37,7 +37,7 @@ func RunUpdateMode(
 		}
 	}
 	if regionMode {
-		if err := region.SortByRegion(targetDir, sortedDst, output, dcCheck, lanCheck); err != nil {
+		if err := region.SortByRegion(targetDir, sortedDst, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}

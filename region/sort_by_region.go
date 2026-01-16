@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 )
 
@@ -39,7 +41,7 @@ func GetRegionName(folderName string) string {
 
 	return "Другое" // на всякий случай
 }
-func SortByRegion(srcDir, dstBase string, output binding.String, dcCheck, lanCheck bool) error {
+func SortByRegion(srcDir, dstBase string, output binding.String, scroll *container.Scroll, dcCheck, lanCheck bool) error {
 
 	types := []string{}
 
@@ -53,7 +55,7 @@ func SortByRegion(srcDir, dstBase string, output binding.String, dcCheck, lanChe
 	}
 
 	for _, t := range types {
-
+		Append(output, scroll, fmt.Sprintf("Начинаю сортировку для папки **%s** \n", t))
 		typeSrc := filepath.Join(srcDir, t)
 		if !dirExists(typeSrc) {
 			continue
@@ -76,15 +78,15 @@ func SortByRegion(srcDir, dstBase string, output binding.String, dcCheck, lanChe
 
 			targetDir := filepath.Join(typeDst, regionName)
 			if err := os.MkdirAll(targetDir, 0755); err != nil {
-				Append(output, fmt.Sprintf("Ошибка создания %s: %v\n", targetDir, err))
+				Append(output, scroll, fmt.Sprintf("Ошибка создания %s: %v\n", targetDir, err))
 				continue
 			}
 
 			srcPath := filepath.Join(typeSrc, folderName)
 			if err := copyDirContents(srcPath, targetDir, output); err != nil {
-				Append(output, fmt.Sprintf("Ошибка копирования %s: %v\n", folderName, err))
+				Append(output, scroll, fmt.Sprintf("Ошибка копирования %s: %v\n", folderName, err))
 			} else {
-				Append(output, fmt.Sprintf("[%s/%s] ← %s\n", t, regionName, folderName))
+				Append(output, scroll, fmt.Sprintf("[%s/%s] ← %s\n", t, regionName, folderName))
 			}
 		}
 	}
@@ -196,7 +198,20 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func Append(output binding.String, text string) {
+var t = 0
+
+func Append(output binding.String, scroll *container.Scroll, text string) {
 	current, _ := output.Get()
 	_ = output.Set(current + text)
+	t++
+
+	if t > 50 {
+		_ = output.Set("Продолжаем сортировку...\n")
+		t = 0
+	}
+	fyne.Do(func() {
+		scroll.ScrollToBottom()
+		//scroll.Refresh()
+	})
+
 }

@@ -100,6 +100,7 @@ func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fy
 func passModeSelected(updateCheck, progressCheck *widget.Check, w fyne.Window) bool {
 	if !updateCheck.Checked && !progressCheck.Checked {
 		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сохранения.", w)
+		//fyne.CurrentApp().Driver().RunOnMain()
 		return false
 	}
 	return true
@@ -279,8 +280,13 @@ func main() {
 				for range quit.ClickedCh {
 					// ← Всё, что касается Fyne — в UI-потоке
 					fyne.DoAndWait(func() {
+
 						w.Close() // ← закрываем окно
-						a.Quit()  // ← завершаем приложение (БЕЗ ОШИБКИ!)
+						if err := os.RemoveAll(targetDir); err != nil {
+						}
+						//appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
+
+						a.Quit() // ← завершаем приложение (БЕЗ ОШИБКИ!)
 					})
 
 					systray.Quit() // ← это можно вне UI-потока
@@ -797,6 +803,8 @@ func main() {
 		progressCheck.Disable()
 		updateCheck.Disable()
 		startPauseBtn.Disable()
+		dcCheck.Disable()
+		lanCheck.Disable()
 		//startPauseBtn.Enable()
 		//btn.Disable()
 	}
@@ -809,6 +817,8 @@ func main() {
 		regionCheck.Enable()
 		progressCheck.Enable()
 		updateCheck.Enable()
+		dcCheck.Enable()
+		lanCheck.Enable()
 		if fileExists(configPath) {
 			startPauseBtn.Enable()
 		}
@@ -941,7 +951,7 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 						return
 					} else {
-						_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+						_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 					}
 
 				}
@@ -1010,7 +1020,7 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "Все операции выполнены!\n")
+					_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 
 				}
 			} else {
@@ -1020,7 +1030,7 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					_ = appendOutput(outputText, "Все операции выполнены!\n")
+					_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 				}
 			}
 
