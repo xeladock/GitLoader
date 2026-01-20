@@ -32,6 +32,8 @@ import (
 
 var trayIcon []byte
 var isAutoRun = false // ← флаг: запущено ли по расписанию
+var manualRun = false
+
 //var skipManualDialog = false
 //
 //func clearLogKeepHeader(textBinding binding.String, entry *widget.Entry) {
@@ -303,14 +305,56 @@ func main() {
 	loginEntry := widget.NewEntry()
 	loginEntry.SetPlaceHolder("Введите логин GitLab")
 	loginEntry.TextStyle = fyne.TextStyle{}
+
 	passEntry := widget.NewEntry()
 	passEntry.Password = true
 	passEntry.SetPlaceHolder("Введите пароль GitLab")
-	passEntry.TextStyle = fyne.TextStyle{}
+	//passEntry.TextStyle = fyne.TextStyle{}
 
 	netboxEntry := widget.NewEntry()
 	netboxEntry.SetPlaceHolder("API NetBox Token")
 	netboxEntry.Password = true
+
+	//выбор папки
+	savePathEntry := widget.NewEntry()
+	savePathEntry.SetPlaceHolder("Папка сохранения. По-умолчанию - текущая")
+
+	browseBtn := widget.NewButton("Обзор", func() {
+		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+			if err != nil {
+				//dialog.ShowError(err, w)
+				return
+			}
+			if uri == nil {
+				return // пользователь отменил
+			}
+
+			// Получаем путь к выбранной папке
+			chosenPath := uri.Path()
+
+			// Можно сразу создать подпапки configs и config_files_clear
+			//configsPath := filepath.Join(chosenPath, "configs")
+			//clearPath := filepath.Join(chosenPath, "config_files_clear")
+
+			//if err := os.MkdirAll(configsPath, 0755); err != nil {
+			//	dialog.ShowError(fmt.Errorf("не удалось создать configs: %w", err), w)
+			//	return
+			//}
+			//if err := os.MkdirAll(clearPath, 0755); err != nil {
+			//	dialog.ShowError(fmt.Errorf("не удалось создать config_files_clear: %w", err), w)
+			//	return
+			//}
+
+			// Подставляем путь в поле (можно показать только configs или общий путь)
+			savePathEntry.SetText(chosenPath)
+
+			// ← Здесь сохрани путь в конфиг, если нужно
+			// cfg.SavePath = chosenPath
+			// _ = saveConfig(cfg, configPath)
+
+			//appendOutput(outputText, fmt.Sprintf("Папка сохранения выбрана: %s\n", chosenPath))
+		}, w)
+	})
 
 	scheduleEntry := widget.NewEntry()
 	scheduleEntry.SetPlaceHolder("Интервал (дней, 1–31). По-умолчанию - 1")
@@ -350,7 +394,7 @@ func main() {
 	//scroll.Offset = fyne.NewPos(0, scroll.Content.Size().Height)
 	//scroll.SetMinSize(fyne.NewSize(600, 300))
 	//scroll.SetMaxSize(fyne.NewSize(600, 300))
-	scroll.ScrollToBottom()
+	//scroll.ScrollToBottom()
 	scroll.Refresh()
 
 	w.CenterOnScreen()
@@ -384,18 +428,28 @@ func main() {
 		}
 
 		if dcCheck.Checked && lanCheck.Checked {
-			lines = append(lines, "ЦОД и ЛВС\n")
+			lines = append(lines, "🗃️Цель: ЦОД и ЛВС\n")
 		} else if dcCheck.Checked {
-			lines = append(lines, "ЦОД\n")
+			lines = append(lines, "🗃️Цель: ЦОД\n")
 		} else if lanCheck.Checked {
-			lines = append(lines, "ЛВС\n")
+			lines = append(lines, "🗃️Цель: ЛВС\n")
 		}
 
 		// Выводим
 		if len(lines) == 0 {
 			_ = outputText.Set("")
+			fyne.Do(func() {
+				scroll.Refresh()
+				//allUnblock()
+			})
 		} else {
 			_ = outputText.Set(strings.Join(lines, "\n"))
+
+			fyne.Do(func() {
+				scroll.Refresh()
+				//allUnblock()
+			})
+
 		}
 	}
 
@@ -527,19 +581,33 @@ func main() {
 		regionCheck.SetChecked(true)
 	}
 
+	if cfg.SavedPlace != "" {
+		savePathEntry.SetPlaceHolder(cfg.SavedPlace + "    ( ✅ Путь загрузки сохранен в файл настроек.)")
+	}
+
 	if cfg.ScheduleDays > 0 {
 		scheduleEntry.SetPlaceHolder(fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)")
 	}
 	if cfg.ScheduleTime != "" {
 		timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 	}
+	//!условие для папки сохранения
 
 	saveBtn := widget.NewButton("Сохранить", nil)
+
+	savePathEntry.OnChanged = func(s string) {
+		if saveBtn.Text == "Сбросить" {
+			savePathEntry.SetText("")
+			savePathEntry.SetPlaceHolder(cfg.SavedPlace + "    ( ✅ Путь загрузки сохранен в файл настроек.)")
+
+		}
+	}
 
 	scheduleEntry.OnChanged = func(s string) {
 		if saveBtn.Text == "Сбросить" {
 			scheduleEntry.SetText("")
 			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
+
 		}
 	}
 	///чанги
@@ -589,6 +657,23 @@ func main() {
 			cfg.TargetMode = "LAN"
 		case !lanCheck.Checked && dcCheck.Checked:
 			cfg.TargetMode = "DC"
+		}
+
+		chosenPath := savePathEntry.Text
+		if chosenPath == "" || chosenPath == "." {
+			// Если поле пустое или "." — берём текущую директорию программы
+			currentDir, err := os.Getwd()
+			if err != nil {
+				currentDir = "." // fallback
+			}
+			chosenPath = currentDir
+			savePathEntry.SetPlaceHolder(" ✅ Текущая папка сохранения") // показываем пользователю
+		}
+
+		cfg.SavedPlace = chosenPath
+
+		if fileExists(configPath) {
+			browseBtn.Disable()
 		}
 
 		//cfg.SaveMode = modeRadio.Selected
@@ -655,7 +740,12 @@ func main() {
 			netboxEntry.SetText("")
 			netboxEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
 			//netboxEntry.TextStyle = fyne.TextStyle{Bold: false, Italic: false, Monospace: false}
+			savePathEntry.SetText("")
+			savePathEntry.SetPlaceHolder(cfg.SavedPlace + "    ( ✅ Путь загрузки сохранен в файл настроек.)")
 			scheduleEntry.SetText("")
+			if fileExists(configPath) {
+				browseBtn.Disable()
+			}
 			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
@@ -675,7 +765,7 @@ func main() {
 			//blockInputs()
 		} else {
 			saveBtn.SetText("Сохранить")
-			//unblockInputs()
+			//ckInputs()
 		}
 	}
 
@@ -683,11 +773,12 @@ func main() {
 	outputView := widget.NewLabelWithData(outputText)
 	//сбросить конфигу
 	resetConfig := func() {
-		saveBtn.SetText("Сохранить")
+
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
 			return
 		}
+		saveBtn.SetText("Сохранить")
 
 		// Сбрасываем GUI
 		loginEntry.SetText("")
@@ -708,9 +799,12 @@ func main() {
 		lanCheck.SetChecked(false)
 
 		scheduleEntry.SetText("")
-		scheduleEntry.SetPlaceHolder("Интервал (дней, 1–31)")
+		scheduleEntry.SetPlaceHolder("Интервал дней (1–31)")
 		timeEntry.SetText("")
 		timeEntry.SetPlaceHolder("Время обновления (HH:MM)")
+		savePathEntry.SetText("")
+		savePathEntry.SetPlaceHolder("Папка загрузки")
+		browseBtn.Enable()
 		appendOutput(outputText, "⚙️ Настройки сброшены.\n")
 		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 		updateButtonState()
@@ -805,6 +899,7 @@ func main() {
 		startPauseBtn.Disable()
 		dcCheck.Disable()
 		lanCheck.Disable()
+		browseBtn.Disable()
 		//startPauseBtn.Enable()
 		//btn.Disable()
 	}
@@ -819,9 +914,16 @@ func main() {
 		updateCheck.Enable()
 		dcCheck.Enable()
 		lanCheck.Enable()
+
 		if fileExists(configPath) {
 			startPauseBtn.Enable()
 		}
+		if fileExists(configPath) {
+			browseBtn.Disable()
+		} else {
+			browseBtn.Enable()
+		}
+		//}
 	}
 
 	//passChecks.Horizontal = true
@@ -874,7 +976,9 @@ func main() {
 		login := strings.TrimSpace(loginEntry.Text)
 		pass := strings.TrimSpace(passEntry.Text)
 		token := strings.TrimSpace(netboxEntry.Text)
-
+		path := strings.TrimSpace(savePathEntry.Text)
+		//println(savePathEntry.Text + "путь")
+		//println(path)
 		if login == "" && cfg.GitLabLogin != "" {
 			login = cfg.GitLabLogin
 		}
@@ -884,12 +988,24 @@ func main() {
 		if token == "" && cfg.NetboxToken != "" {
 			token = cfg.NetboxToken
 		}
+		if path == "" && cfg.SavedPlace != "" {
+			path = cfg.SavedPlace
+		}
+
 		//!загрузка ЦОД
 		if dcCheck.Checked {
 
 			repoURL := "https://configs.net.rt.ru/dc/configs.git"
 			authURL := repoURL
-			dstDir := filepath.Join(targetDir, "ЦОД")
+			dstDir := filepath.Join(path, targetDir, "ЦОД")
+			sdDst := filepath.Join(path, sortedDst, "ЦОД")
+
+			if err := os.MkdirAll(sdDst, 0755); err != nil {
+				//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
+				//continue
+			}
+
+			//println(dstDir, sdDst)
 
 			if login != "" && pass != "" {
 				//passBytes, _ := base64.StdEncoding.DecodeString(pass)
@@ -932,7 +1048,7 @@ func main() {
 
 			if isProgressMode {
 				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
-				if err := progdl.RunProgressMode(targetDir, sortedDst, cfg,
+				if err := progdl.RunProgressMode(dstDir, path, cfg,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
@@ -943,35 +1059,41 @@ func main() {
 				}
 			} else {
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
-				if err := progdl.RunUpdateMode(targetDir, sortedDst,
+				if err := progdl.RunUpdateMode(dstDir, sdDst,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-					if dcCheck.Checked && lanCheck.Checked {
-						return
-					} else {
-						_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
-					}
 
+					_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 				}
+				//if dcCheck.Checked && lanCheck.Checked {
+				//} else
+
 			}
-
-			cfg.LastRun = time.Now().Format(time.RFC3339)
-
+			if manualRun == false {
+				cfg.LastRun = time.Now().Format(time.RFC3339)
+			} else {
+				manualRun = false
+			}
 			fyne.Do(func() {
 				scroll.ScrollToBottom()
 				scroll.Refresh()
 				allUnblock()
 			})
-
 		}
 
 		if lanCheck.Checked {
 
 			repoURL := "https://configs.net.rt.ru/lan/configs.git"
 			authURL := repoURL
-			dstDir := filepath.Join(targetDir, "ЛВС")
+			dstDir := filepath.Join(path, targetDir, "ЛВС")
+			sdDst := filepath.Join(path, sortedDst, "ЛВС")
+			if err := os.MkdirAll(sdDst, 0755); err != nil {
+				//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
+				//continue
+			}
+
 			if login != "" && pass != "" {
 				//passBytes, _ := base64.StdEncoding.DecodeString(pass)
 				//passString := string(passBytes)
@@ -1015,7 +1137,7 @@ func main() {
 
 			if isProgressMode {
 				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
-				if err := progdl.RunProgressMode(targetDir, sortedDst, cfg,
+				if err := progdl.RunProgressMode(dstDir, path, cfg,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
@@ -1025,7 +1147,7 @@ func main() {
 				}
 			} else {
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
-				if err := progdl.RunUpdateMode(targetDir, sortedDst,
+				if err := progdl.RunUpdateMode(dstDir, sdDst,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
@@ -1034,15 +1156,19 @@ func main() {
 				}
 			}
 
-			cfg.LastRun = time.Now().Format(time.RFC3339)
-
-			fyne.Do(func() {
-				scroll.ScrollToBottom()
-				scroll.Refresh()
-				allUnblock()
-			})
+			if manualRun == false {
+				cfg.LastRun = time.Now().Format(time.RFC3339)
+			} else {
+				manualRun = false
+			}
 
 		}
+
+		fyne.Do(func() {
+			scroll.ScrollToBottom()
+			scroll.Refresh()
+			allUnblock()
+		})
 
 	}
 
@@ -1063,6 +1189,7 @@ func main() {
 					if confirmed {
 						//clearLogKeepHeader(outputText, &output.Entry)
 						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
+						manualRun = true
 						go func() {
 							startDownload()
 						}()
@@ -1146,7 +1273,9 @@ func main() {
 		targetBlock,
 		//layout.NewSpacer(),
 	)
-
+	savePathContainer := container.NewBorder(
+		nil, nil, nil, browseBtn, savePathEntry,
+	)
 	//modeBox := container.NewGridWithColumns(3,
 	//	container.NewCenter(asIsCheck),
 	//	container.NewCenter(platformCheck),
@@ -1188,6 +1317,7 @@ func main() {
 		scroll,
 		//saveButtonContainer := container.NewHBox(layout.NewSpacer(),  saveBtn,  startPauseBtn  )
 		saveButtonContainer,
+		savePathContainer,
 		scheduleEntry,
 		timeEntry,
 	)

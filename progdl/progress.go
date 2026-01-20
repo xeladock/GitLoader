@@ -77,7 +77,7 @@ func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 
 // RunProgressMode — новый режим: сохраняет копию с датой
 func RunProgressMode(
-	targetDir, sortedDst string,
+	targetDir, path string,
 	cfg *config.AppConfig,
 	asIs, platformMode, regionMode, dcCheck, lanCheck bool,
 	netboxToken string,
@@ -85,8 +85,12 @@ func RunProgressMode(
 	scroll *container.Scroll,
 ) error {
 	// ← ПАПКА С ДАТОЙ — сразу пишем туда!
+	//parent := filepath.Dir(targetDir)
 	dateStr := time.Now().Format("02-01-06")
-	datedDir := filepath.Join(".", dateStr, "config_files_clear")
+	folderName := filepath.Base(targetDir)
+	datedDir := filepath.Join(path, dateStr, "config_files_clear", folderName)
+	//println(targetDir, "target")
+	//println(datedDir, "datedDir")
 	if err := os.MkdirAll(datedDir, 0777); err != nil {
 		return err
 	}
@@ -104,7 +108,7 @@ func RunProgressMode(
 		}
 	}
 	if regionMode {
-		if err := region.SortByRegion(targetDir, datedDir, output, scroll, dcCheck, lanCheck); err != nil {
+		if err := region.SortByRegion(targetDir, datedDir, output, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}

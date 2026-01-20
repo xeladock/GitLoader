@@ -1,7 +1,6 @@
 package asis
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -14,6 +13,7 @@ import (
 
 // MoveAsIs — просто переименовывает папку configs → configs_file_clear
 func MoveAsIs(srcDir, dstDir string, output binding.String, dcCheck, lanCheck bool) error {
+	println(dstDir)
 
 	//hasDC := filepath.Join(dstDir, "ЦОД")
 	//hasLAN := filepath.Join(dstDir, "ЛВС")
@@ -62,14 +62,16 @@ func MoveAsIs(srcDir, dstDir string, output binding.String, dcCheck, lanCheck bo
 
 	// 3. удалить пустой /configs
 
-	if dcCheck {
-		Append(output, fmt.Sprintf("Папка ЦОД загружена успешно (Как есть)!\n"))
-	}
-	if lanCheck {
-		Append(output, fmt.Sprintf("Папка ЛВС загружена успешно (Как есть)!\n"))
-	}
-
-	return os.RemoveAll(srcDir)
+	//if dcCheck {
+	//	Append(output, fmt.Sprintf("Папка ЦОД загружена успешно (Как есть)!\n"))
+	//}
+	//if lanCheck {
+	//	Append(output, fmt.Sprintf("Папка ЛВС загружена успешно (Как есть)!\n"))
+	//}
+	println(srcDir)
+	parent := filepath.Dir(srcDir)
+	println(parent)
+	return os.RemoveAll(parent)
 }
 
 //parent := filepath.Dir(srcDir)
