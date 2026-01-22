@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 )
 
@@ -40,7 +42,7 @@ func GetRegionName(folderName string) string {
 	return "Другое" // на всякий случай
 }
 
-func SortByRegion(srcDir, dstBase string, output binding.String, dcCheck, lanCheck bool) error {
+func SortByRegion(srcDir, dstBase string, output binding.String, scroll *container.Scroll, dcCheck, lanCheck bool) error {
 	entries, err := os.ReadDir(srcDir)
 
 	println(dstBase, "- dstbase", srcDir, "- srcdir")
@@ -60,13 +62,13 @@ func SortByRegion(srcDir, dstBase string, output binding.String, dcCheck, lanChe
 	//} //types = append(types, "ЛВС")
 
 	if err != nil {
-		Append(output, fmt.Sprintf("Ошибка чтения папки %s: %v\n", srcDir, err))
+		Append(output, scroll, fmt.Sprintf("Ошибка чтения папки %s: %v\n", srcDir, err))
 		return err
 	}
 
 	// Создаём целевую папку dstBase, если её нет
 	if err := os.MkdirAll(dstBase, 0755); err != nil {
-		Append(output, fmt.Sprintf("Ошибка создания папки %s: %v\n", dstBase, err))
+		Append(output, scroll, fmt.Sprintf("Ошибка создания папки %s: %v\n", dstBase, err))
 		return err
 	}
 
@@ -80,16 +82,16 @@ func SortByRegion(srcDir, dstBase string, output binding.String, dcCheck, lanChe
 		targetDir := filepath.Join(dstBase, regionName) // ← ГЛАВНОЕ ИЗМЕНЕНИЕ: используем dstBase
 
 		if err := os.MkdirAll(targetDir, 0777); err != nil {
-			Append(output, fmt.Sprintf("Ошибка создания папки %s: %v\n", regionName, err))
+			Append(output, scroll, fmt.Sprintf("Ошибка создания папки %s: %v\n", regionName, err))
 			continue
 		}
 
 		// Копируем всё содержимое папки
 		srcPath := filepath.Join(srcDir, folderName)
 		if err := copyDirContents(srcPath, targetDir, output); err != nil {
-			Append(output, fmt.Sprintf("Ошибка копирования %s: %v\n", folderName, err))
+			Append(output, scroll, fmt.Sprintf("Ошибка копирования %s: %v\n", folderName, err))
 		} else {
-			Append(output, fmt.Sprintf("[%s] ← %s\n", regionName, folderName))
+			Append(output, scroll, fmt.Sprintf("[%s] ← %s\n", regionName, folderName))
 		}
 	}
 	if err == nil {
@@ -263,7 +265,11 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func Append(output binding.String, text string) {
+func Append(output binding.String, scroll *container.Scroll, text string) {
 	current, _ := output.Get()
 	_ = output.Set(current + text)
+	fyne.Do(func() {
+		scroll.ScrollToBottom()
+		//scroll.Refresh()
+	})
 }

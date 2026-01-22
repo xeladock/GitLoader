@@ -203,9 +203,9 @@ func NewReadOnlyEntry() *ReadOnlyEntry {
 	return e
 }
 
-//func (e *ReadOnlyEntry) Refresh() {
-//	e.Entry.Refresh()
-//}
+func (e *ReadOnlyEntry) Refresh() {
+	e.Entry.Refresh()
+}
 
 // ❗ Полностью блокируем ввод с клавиатуры
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
@@ -1053,8 +1053,11 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-
-					_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+					if dcCheck.Checked && lanCheck.Checked {
+					} else {
+						_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+					}
+					//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 
 				}
 			} else {
@@ -1064,8 +1067,10 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
-
-					_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+					if dcCheck.Checked && lanCheck.Checked {
+					} else {
+						_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+					}
 				}
 				//if dcCheck.Checked && lanCheck.Checked {
 				//} else
@@ -1142,8 +1147,11 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
+					if dcCheck.Checked && lanCheck.Checked {
+					} else {
+						_ = appendOutput(outputText, "Все операции для ЦОД и ЛВС выполнены!\n")
+					}
 					_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
-
 				}
 			} else {
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
@@ -1152,6 +1160,10 @@ func main() {
 					token, outputText, scroll); err != nil {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
+					if dcCheck.Checked && lanCheck.Checked {
+					} else {
+						_ = appendOutput(outputText, "Все операции для ЦОД и ЛВС выполнены!\n")
+					}
 					_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 				}
 			}
@@ -1161,7 +1173,6 @@ func main() {
 			} else {
 				manualRun = false
 			}
-
 		}
 
 		fyne.Do(func() {

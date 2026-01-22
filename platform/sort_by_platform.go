@@ -21,7 +21,7 @@ func SortFilesByPlatform(
 ) error {
 
 	typeDirs := []string{}
-
+	println(dstBase, "- dstbase", srcDir, "- srcdir")
 	if dcCheck {
 		os.RemoveAll(filepath.Join(dstBase, "ЦОД"))
 		typeDirs = append(typeDirs, "ЦОД")
@@ -31,16 +31,19 @@ func SortFilesByPlatform(
 		typeDirs = append(typeDirs, "ЛВС")
 	}
 
-	allowedRoots := []string{"PR", "pr", "DV", "dv", "SZ", "sz", "CE", "ce", "UR", "ur", "UK", "uk", "SI", "si"}
+	//allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
+	allowedRoots := []string{"DV"}
 
 	for _, t := range typeDirs {
-		AppendToOutput(output, scroll, fmt.Sprintf("Начинаю сортировку для папки **%s** \n", t))
-		typeSrc := filepath.Join(srcDir, t)
-		if !dirExists(typeSrc) {
+		println(t, srcDir)
+		AppendToOutput(output, scroll, fmt.Sprintf("Начинаю сортировку для УЭС%s \n", t))
+		//typeSrc := filepath.Join(srcDir)
+		//println(typeSrc, "- typesrc")
+		if !dirExists(srcDir) {
 			continue
 		}
 
-		err := filepath.Walk(typeSrc, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
 			}
@@ -65,8 +68,8 @@ func SortFilesByPlatform(
 			if err != nil || platform == "" {
 				platform = "Unknown"
 			}
-
-			targetDir := filepath.Join(dstBase, t, platform)
+			//println(dstBase, "- dstbase", platform, "-platform")
+			targetDir := filepath.Join(dstBase, platform)
 			if err := os.MkdirAll(targetDir, 0777); err != nil {
 				return err
 			}
@@ -89,8 +92,8 @@ func SortFilesByPlatform(
 			return err
 		}
 	}
-
-	os.RemoveAll(srcDir)
+	println(srcDir, "- srcdir удаление")
+	os.RemoveAll(filepath.Dir(srcDir))
 	return nil
 }
 
@@ -174,21 +177,18 @@ func dirExists(path string) bool {
 	return info.IsDir()
 }
 
-func scr(*container.Scroll) {
-	scroll := container.Scroll{}
-	scroll.ScrollToBottom()
-}
+//func scr(*container.Scroll) {
+//	scroll := container.Scroll{}
+//	scroll.ScrollToBottom()
+//}
 
 var t = 0
 
 func AppendToOutput(output binding.String, scroll *container.Scroll, text string) {
-
 	current, _ := output.Get()
-
 	_ = output.Set(current + text + "\n")
 	t++
-
-	if t > 50 {
+	if t > 40 {
 		_ = output.Set("Продолжаем сортировку...\n")
 		t = 0
 	}
@@ -201,15 +201,15 @@ func AppendToOutput(output binding.String, scroll *container.Scroll, text string
 	//	scroll.ScrollToBottom()
 }
 
-func AppendToOutput2(output binding.String, scroll *container.Scroll, msg string) {
-	current, _ := output.Get()
-	output.Set(current + msg + "\n")
-
-	fyne.Do(func() {
-		scroll.ScrollToBottom()
-		scroll.Refresh()
-	})
-}
+//func AppendToOutput2(output binding.String, scroll *container.Scroll, msg string) {
+//	current, _ := output.Get()
+//	output.Set(current + msg + "\n")
+//
+//	fyne.Do(func() {
+//		scroll.ScrollToBottom()
+//		scroll.Refresh()
+//	})
+//}
 
 // безопасная автопрокрутка
 //go func() {

@@ -35,7 +35,7 @@ func RunUpdateMode(
 	}
 
 	if regionMode {
-		if err := region.SortByRegion(targetDir, sortedDst, output, dcCheck, lanCheck); err != nil {
+		if err := region.SortByRegion(targetDir, sortedDst, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}

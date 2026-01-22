@@ -108,7 +108,7 @@ func RunProgressMode(
 		}
 	}
 	if regionMode {
-		if err := region.SortByRegion(targetDir, datedDir, output, dcCheck, lanCheck); err != nil {
+		if err := region.SortByRegion(targetDir, datedDir, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}
 	}
