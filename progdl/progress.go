@@ -83,14 +83,15 @@ func RunProgressMode(
 	netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
+	manualRun bool,
 ) error {
 	// ← ПАПКА С ДАТОЙ — сразу пишем туда!
 	//parent := filepath.Dir(targetDir)
 	dateStr := time.Now().Format("02-01-06")
 	folderName := filepath.Base(targetDir)
 	datedDir := filepath.Join(path, dateStr, "config_files_clear", folderName)
-	//println(targetDir, "target")
-	//println(datedDir, "datedDir")
+	println(targetDir, "target в progress.go")
+	println(datedDir, "datedDir в progress.go")
 	if err := os.MkdirAll(datedDir, 0777); err != nil {
 		return err
 	}
@@ -129,7 +130,7 @@ func RunProgressMode(
 	//}
 
 	//_ = appendOutput(output, "Архивная копия сохранена успешно.")
-	if fileExists(configPath) {
+	if manualRun == false {
 		nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
 		delay := time.Until(nextTime)
 		hours := int(delay.Hours())
@@ -162,29 +163,29 @@ func fileExists(path string) bool {
 //	nextRun.Format("15:04"),
 //	hours, minutes))
 
-func RemoveGitFolder(dir string, output binding.String) error {
-	gitPath := filepath.Join(dir, ".git")
-
-	// Проверяем, существует ли .git
-	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
-		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
-		return nil
-	}
-
-	err := os.Chmod(gitPath, 0777)
-	if err != nil {
-		return err
-	}
-
-	// Удаляем полностью
-	if err := os.RemoveAll(gitPath); err != nil {
-		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
-		return err
-	}
-
-	//appendOutput(output, "Папка .git удалена.\n")
-	return nil
-}
+//func RemoveGitFolder(dir string, output binding.String) error {
+//	gitPath := filepath.Join(dir, ".git")
+//
+//	// Проверяем, существует ли .git
+//	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
+//		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
+//		return nil
+//	}
+//
+//	err := os.Chmod(gitPath, 0777)
+//	if err != nil {
+//		return err
+//	}
+//
+//	// Удаляем полностью
+//	if err := os.RemoveAll(gitPath); err != nil {
+//		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
+//		return err
+//	}
+//
+//	//appendOutput(output, "Папка .git удалена.\n")
+//	return nil
+//}
 
 func appendOutput(bindStr binding.String, msg string) error {
 	current, err := bindStr.Get()

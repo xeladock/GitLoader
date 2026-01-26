@@ -182,7 +182,7 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 		//scroll.ScrollToBottom()
 		scrollToBottom(scroll)
 		//scroll.Offset = fyne.NewPos(0, scroll.Offset.Y+1000) // ← прокрутка вниз
-		scroll.Refresh()
+		//scroll.Refresh()
 		//scroll.ScrollToBottom() // ← обновление
 	})
 	//appendOutput(output, "Планировщик запущен\n")

@@ -101,7 +101,7 @@ func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fy
 
 func passModeSelected(updateCheck, progressCheck *widget.Check, w fyne.Window) bool {
 	if !updateCheck.Checked && !progressCheck.Checked {
-		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сохранения.", w)
+		dialog.ShowInformation("Ой!", "⚠️ Выберите режим работы.", w)
 		//fyne.CurrentApp().Driver().RunOnMain()
 		return false
 	}
@@ -166,7 +166,7 @@ func saveConfig(cfg *config.AppConfig, path string) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(cfg)
 }
-func loadConfig(path string) (*config.AppConfig, error) {
+func LoadConfig(path string) (*config.AppConfig, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -177,6 +177,19 @@ func loadConfig(path string) (*config.AppConfig, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func loadConfigFromFile() {
+	const configPath = "config.json"
+
+	cfg, err := conf.LoadConfig(configPath) // ← теперь работает
+	if err != nil {
+
+		return
+	}
+
+	loginEntry.SetText(cfg.GitLabLogin)
+	// ... остальные поля ...
 }
 
 // для остановки
@@ -225,12 +238,33 @@ func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
 type hiddenTheme struct{ fyne.Theme }
 
 func (hiddenTheme) ScrollBarSize() int { return 0 }
+
+func NotifySuccess(title, message string) {
+	exec.Command("paplay", "./icon/yes.mp3").Run()
+	cmd := exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", title, message)
+	cmd.Run() // ошибки молча игнорируем
+}
+
+func NotifyError(title, message string) {
+	exec.Command("paplay", "./icon/no.mp3").Run()
+	cmd := exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message)
+	cmd.Run()
+}
+
+//func NotifySuccess(title, message string) {
+//	beeep.Notify(title, message, "") // можно указать иконку
+//}
+//
+//func NotifyError(title, message string) {
+//	beeep.Alert(title, message, "icon/icon.png")
+//}
+
 func main() {
 
 	const configPath = "config.json"
 
 	var cfg *config.AppConfig
-	cfg, err := loadConfig(configPath)
+	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		// файла нет — просим пользователя ввести данные
 		cfg = &config.AppConfig{}
@@ -245,7 +279,7 @@ func main() {
 	// Set Fyne app icon as well (optional)
 	a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
 
-	w := a.NewWindow("GitLab Downloader")
+	w := a.NewWindow("GitTornado")
 	w.Resize(fyne.NewSize(600, 250))
 	w.SetFixedSize(true)
 	w.CenterOnScreen()
@@ -263,8 +297,8 @@ func main() {
 				//systray.SetTooltip("GitLab Downloader v0.71")
 			}
 			//systray.SetTooltip("GitLab Downloader")
-			systray.SetTitle("GitLab Downloader")
-			systray.SetTooltip("GitLab Downloader v1.0")
+			systray.SetTitle("GitTornado")
+			systray.SetTooltip("GitTornado v1.0")
 
 			open := systray.AddMenuItem("Открыть", "Показать программу")
 			quit := systray.AddMenuItem("Выход", "Закрыть программу")
@@ -272,8 +306,10 @@ func main() {
 			go func() {
 				for range open.ClickedCh {
 					fyne.Do(func() {
+
 						w.Show()
 						w.RequestFocus()
+
 					})
 				}
 			}()
@@ -312,8 +348,9 @@ func main() {
 	//passEntry.TextStyle = fyne.TextStyle{}
 
 	netboxEntry := widget.NewEntry()
-	netboxEntry.SetPlaceHolder("API NetBox Token")
+	netboxEntry.SetPlaceHolder("Введите API NetBox Token")
 	netboxEntry.Password = true
+	netboxEntry.Disable()
 
 	//выбор папки
 	savePathEntry := widget.NewEntry()
@@ -408,16 +445,30 @@ func main() {
 	dcCheck := widget.NewCheck("ЦОД", nil)
 	lanCheck := widget.NewCheck("ЛВС", nil)
 
+	//testBtn := widget.NewButton("Тест уведомления", func() {
+	//	NotifySuccess("Тест", "Это уведомление от beeep!")
+	//})
+	//
+	//testBtn.OnTapped = func() {
+	//	NotifySuccess("Тест", "Это уведомление от beeep!")
+	//}
+
 	updateHint := func() {
 		var lines []string
 
 		// --- Сортировка ---
 		if asIsCheck.Checked {
 			lines = append(lines, "🔎Сортировка: как есть (без изменений).")
+			netboxEntry.Disable()
+			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
 		} else if platformCheck.Checked {
+			netboxEntry.Enable()
+			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
 			lines = append(lines, "🔎Сортировка: по платформам.")
 		} else if regionCheck.Checked {
 			lines = append(lines, "🔎Сортировка: по регионам.")
+			netboxEntry.Disable()
+			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
 		}
 
 		// --- Режим сохранения ---
@@ -466,6 +517,12 @@ func main() {
 		if checked {
 			asIsCheck.SetChecked(false) // ← было platformCheck!
 			regionCheck.SetChecked(false)
+		} else {
+			///d2
+			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
+			//netboxEntry.SetText("")
+			netboxEntry.Disable()
+
 		}
 		updateHint()
 	}
@@ -620,6 +677,13 @@ func main() {
 
 	startPauseBtn := widget.NewButton("Старт", nil)
 	startPauseBtn.Importance = widget.MediumImportance
+	if fileExists(configPath) {
+		browseBtn.Disable()
+	} else {
+		browseBtn.Enable()
+	}
+
+	//сюда блок обзора
 	//PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 
 	//записываем настройки
@@ -627,6 +691,7 @@ func main() {
 		cfg.GitLabLogin = loginEntry.Text
 		cfg.GitLabPass = passEntry.Text
 		cfg.NetboxToken = netboxEntry.Text
+
 		//
 		//if startPauseBtn.Text == "Старт" {
 		//	cfg.SchedulerState = "paused"
@@ -671,10 +736,6 @@ func main() {
 		}
 
 		cfg.SavedPlace = chosenPath
-
-		if fileExists(configPath) {
-			browseBtn.Disable()
-		}
 
 		//cfg.SaveMode = modeRadio.Selected
 
@@ -743,14 +804,18 @@ func main() {
 			savePathEntry.SetText("")
 			savePathEntry.SetPlaceHolder(cfg.SavedPlace + "    ( ✅ Путь загрузки сохранен в файл настроек.)")
 			scheduleEntry.SetText("")
-			if fileExists(configPath) {
-				browseBtn.Disable()
-			}
+
 			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+			if !platformCheck.Checked {
+				cfg.NetboxToken = ""
+			}
 			_ = saveConfig(cfg, configPath)
+			//if fileExists(configPath) {
+			browseBtn.Disable()
+			//}
 			appendOutput(outputText, "✅ Настройки сохранены.")
 			saveBtn.SetText("Сбросить")
 			//blockInputs()
@@ -805,11 +870,14 @@ func main() {
 		savePathEntry.SetText("")
 		savePathEntry.SetPlaceHolder("Папка загрузки")
 		browseBtn.Enable()
+		netboxEntry.Disable()
 		appendOutput(outputText, "⚙️ Настройки сброшены.\n")
 		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 		updateButtonState()
+
 		//unblockInputs()
 	}
+
 	//действие кнопки "скачать/сохранить"
 	saveBtn.OnTapped = func() {
 		if saveBtn.Text == "Сохранить" {
@@ -824,10 +892,6 @@ func main() {
 				dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
 				return
 			}
-			if netboxEntry.Text == "" && !fileExists(configPath) {
-				dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
-				return
-			}
 
 			if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 				return
@@ -835,8 +899,15 @@ func main() {
 			if !passModeSelected(updateCheck, progressCheck, w) {
 				return
 			}
-			if !targetModeSelected(updateCheck, progressCheck, w) {
+			if !targetModeSelected(dcCheck, lanCheck, w) {
 				return
+			}
+			if platformCheck.Checked {
+				if netboxEntry.Text == "" && !fileExists(configPath) {
+					dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+					return
+
+				}
 			}
 
 		}
@@ -949,10 +1020,6 @@ func main() {
 			dialog.ShowInformation("Ой!", "⚠️ Нет пароля.", w)
 			return
 		}
-		if netboxEntry.Text == "" && !fileExists(configPath) {
-			dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
-			return
-		}
 
 		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 			return
@@ -962,6 +1029,12 @@ func main() {
 		}
 		if !targetModeSelected(dcCheck, lanCheck, w) {
 			return
+		}
+		if platformCheck.Checked {
+			if netboxEntry.Text == "" && !fileExists(configPath) {
+				dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+				return
+			}
 		}
 
 		outputText.Set("")
@@ -998,12 +1071,6 @@ func main() {
 			repoURL := "https://configs.net.rt.ru/dc/configs.git"
 			authURL := repoURL
 			dstDir := filepath.Join(path, targetDir, "ЦОД")
-			sdDst := filepath.Join(path, sortedDst, "ЦОД")
-
-			if err := os.MkdirAll(sdDst, 0755); err != nil {
-				//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
-				//continue
-			}
 
 			//println(dstDir, sdDst)
 
@@ -1037,6 +1104,7 @@ func main() {
 					_ = appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
 				}
 				fyne.Do(allUnblock)
+
 				return
 			}
 			if err := RemoveGitFolder(dstDir, outputText); err != nil {
@@ -1050,26 +1118,46 @@ func main() {
 				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
-					token, outputText, scroll); err != nil {
-					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					token, outputText, scroll, manualRun); err != nil {
+					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					fyne.Do(func() {
+						_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						NotifyError("Oй!", "Что-то пошло нет так!")
+					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 					} else {
-						_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+						fyne.Do(func() {
+							_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+						})
+						//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 					}
-					//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
-
 				}
 			} else {
+				sdDst := filepath.Join(path, sortedDst, "ЦОД")
+				//println(dstDir, "-dstdir в gui4", sdDst, "-sdDst в gui4")
+				if err := os.MkdirAll(sdDst, 0755); err != nil {
+					//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
+					//continue
+				}
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(dstDir, sdDst,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
-					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					fyne.Do(func() {
+						_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						NotifyError("Oй!", "Что-то пошло не так!")
+					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 					} else {
-						_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+						//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+						fyne.Do(func() {
+							_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+						})
 					}
 				}
 				//if dcCheck.Checked && lanCheck.Checked {
@@ -1093,11 +1181,6 @@ func main() {
 			repoURL := "https://configs.net.rt.ru/lan/configs.git"
 			authURL := repoURL
 			dstDir := filepath.Join(path, targetDir, "ЛВС")
-			sdDst := filepath.Join(path, sortedDst, "ЛВС")
-			if err := os.MkdirAll(sdDst, 0755); err != nil {
-				//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
-				//continue
-			}
 
 			if login != "" && pass != "" {
 				//passBytes, _ := base64.StdEncoding.DecodeString(pass)
@@ -1144,27 +1227,60 @@ func main() {
 				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
-					token, outputText, scroll); err != nil {
-					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					token, outputText, scroll, manualRun); err != nil {
+					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					fyne.Do(func() {
+						_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						NotifyError("Oй!", "Что-то пошло нет так!")
+					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
+						//_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
+						fyne.Do(func() {
+							_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
+							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+						})
 					} else {
-						_ = appendOutput(outputText, "Все операции для ЦОД и ЛВС выполнены!\n")
+						//fyne.Do(func() {
+						_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+						//})
+						//_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+
 					}
-					_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 				}
 			} else {
+
+				sdDst := filepath.Join(path, sortedDst, "ЛВС")
+
+				//println(dstDir, "-dstdir в gui4", sdDst, "-sdDst в gui4")
+				if err := os.MkdirAll(sdDst, 0755); err != nil {
+					//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
+					//continue
+				}
 				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(dstDir, sdDst,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
+					//fyne.Do(func() {
 					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					NotifyError("Oй!", "Что-то пошло нет так!")
+					//})
+					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
+						fyne.Do(func() {
+							_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
+							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
+						})
+						//_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 					} else {
-						_ = appendOutput(outputText, "Все операции для ЦОД и ЛВС выполнены!\n")
+						//fyne.Do(func() {
+						_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
+						//})
+						//_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 					}
-					_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 				}
 			}
 
@@ -1173,6 +1289,7 @@ func main() {
 			} else {
 				manualRun = false
 			}
+
 		}
 
 		fyne.Do(func() {
@@ -1195,7 +1312,7 @@ func main() {
 		if fileExists(configPath) && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
 			dialog.ShowConfirm(
 				"Ой!",
-				"Всё равно скачать сейчас?\n",
+				"Загрузить принудительно?\n",
 				func(confirmed bool) {
 					if confirmed {
 						//clearLogKeepHeader(outputText, &output.Entry)
@@ -1331,6 +1448,7 @@ func main() {
 		savePathContainer,
 		scheduleEntry,
 		timeEntry,
+		//testBtn,
 	)
 
 	w.SetContent(form)

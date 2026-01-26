@@ -2,7 +2,6 @@
 package progdl
 
 import (
-	"os"
 	"path/filepath"
 
 	"configtool.local/asis"
@@ -107,10 +106,10 @@ func RunUpdateMode(
 //	return nil
 //}
 
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
+//func dirExists(path string) bool {
+//	info, err := os.Stat(path)
+//	if err != nil {
+//		return false
+//	}
+//	return info.IsDir()
+//}

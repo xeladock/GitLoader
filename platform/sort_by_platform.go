@@ -21,13 +21,16 @@ func SortFilesByPlatform(
 ) error {
 
 	typeDirs := []string{}
-	println(dstBase, "- dstbase", srcDir, "- srcdir")
+	//println(dstBase, "- dstbase", srcDir, "- srcdir")
 	if dcCheck {
-		os.RemoveAll(filepath.Join(dstBase, "ЦОД"))
+		os.RemoveAll(dstBase)
+		//os.RemoveAll(filepath.Join(dstBase, "ЦОД"))
 		typeDirs = append(typeDirs, "ЦОД")
 	}
 	if lanCheck {
-		os.RemoveAll(filepath.Join(dstBase, "ЛВС"))
+		println(dstBase, "очистка lan для платформы")
+		os.RemoveAll(dstBase)
+		//os.RemoveAll(filepath.Join(dstBase, "ЛВС"))
 		typeDirs = append(typeDirs, "ЛВС")
 	}
 
@@ -35,7 +38,7 @@ func SortFilesByPlatform(
 	allowedRoots := []string{"DV"}
 
 	for _, t := range typeDirs {
-		println(t, srcDir)
+		//println(t, srcDir)
 		AppendToOutput(output, scroll, fmt.Sprintf("Начинаю сортировку для УЭС%s \n", t))
 		//typeSrc := filepath.Join(srcDir)
 		//println(typeSrc, "- typesrc")
@@ -92,7 +95,7 @@ func SortFilesByPlatform(
 			return err
 		}
 	}
-	println(srcDir, "- srcdir удаление")
+	//println(srcDir, "- srcdir удаление")
 	os.RemoveAll(filepath.Dir(srcDir))
 	return nil
 }
