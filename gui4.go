@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"configtool.local/conf"
+	conf "configtool.local/conf"
 	"configtool.local/progdl"
 	"fyne.io/fyne/v2/theme"
 	//"configtool.local/start_stop"
@@ -156,7 +156,7 @@ func RemoveGitFolder(dir string, output binding.String) error {
 	return nil
 }
 
-func saveConfig(cfg *config.AppConfig, path string) error {
+func saveConfig(cfg *conf.AppConfig, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -166,29 +166,80 @@ func saveConfig(cfg *config.AppConfig, path string) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(cfg)
 }
-func LoadConfig(path string) (*config.AppConfig, error) {
+func LoadConfig(path string) (*conf.AppConfig, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	cfg := &config.AppConfig{}
+	cfg := &conf.AppConfig{}
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
 		return nil, err
 	}
 	return cfg, nil
 }
 
+var (
+	asIsCheck     *widget.Check
+	platformCheck *widget.Check
+	regionCheck   *widget.Check
+
+	progressCheck *widget.Check
+	updateCheck   *widget.Check
+
+	dcCheck  *widget.Check
+	lanCheck *widget.Check
+
+	// ... другие виджеты, если нужно
+)
+
+// восстановление боксов после переоткрытия
 func loadConfigFromFile() {
 	const configPath = "config.json"
-
-	cfg, err := conf.LoadConfig(configPath) // ← теперь работает
+	cfg, err := LoadConfig(configPath)
 	if err != nil {
-
 		return
 	}
+	switch cfg.Mode {
+	case "asis":
+		asIsCheck.SetChecked(true)
+	case "platform":
+		platformCheck.SetChecked(true)
+	case "region":
+		regionCheck.SetChecked(true)
+	default:
+		asIsCheck.SetChecked(false)
+		platformCheck.SetChecked(false)
+		regionCheck.SetChecked(false)
+	}
 
-	loginEntry.SetText(cfg.GitLabLogin)
+	switch cfg.SaveMode {
+	case "progress":
+		progressCheck.SetChecked(true)
+	case "update":
+		updateCheck.SetChecked(true)
+	default:
+		updateCheck.SetChecked(false)
+		progressCheck.SetChecked(false)
+	}
+
+	switch cfg.TargetMode {
+	case "both":
+		dcCheck.SetChecked(true)
+		lanCheck.SetChecked(true)
+	case "DC":
+		dcCheck.SetChecked(true)
+		lanCheck.SetChecked(false)
+	case "LAN":
+		dcCheck.SetChecked(false)
+		lanCheck.SetChecked(true)
+	default:
+		dcCheck.SetChecked(false)
+		lanCheck.SetChecked(false)
+	}
+
+	//loginEntry.SetText(cfg.GitLabLogin)
+
 	// ... остальные поля ...
 }
 
@@ -241,14 +292,14 @@ func (hiddenTheme) ScrollBarSize() int { return 0 }
 
 func NotifySuccess(title, message string) {
 	exec.Command("paplay", "./icon/yes.mp3").Run()
-	cmd := exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", title, message)
-	cmd.Run() // ошибки молча игнорируем
+	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message).Run()
+	//cmd.Run() // ошибки молча игнорируем
 }
 
 func NotifyError(title, message string) {
 	exec.Command("paplay", "./icon/no.mp3").Run()
-	cmd := exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message)
-	cmd.Run()
+	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message).Run()
+	//cmd.Run()
 }
 
 //func NotifySuccess(title, message string) {
@@ -263,11 +314,11 @@ func main() {
 
 	const configPath = "config.json"
 
-	var cfg *config.AppConfig
+	var cfg *conf.AppConfig
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		// файла нет — просим пользователя ввести данные
-		cfg = &config.AppConfig{}
+		cfg = &conf.AppConfig{}
 	}
 
 	targetDir := "./configs" // куда клонируем репо
@@ -305,10 +356,12 @@ func main() {
 
 			go func() {
 				for range open.ClickedCh {
-					fyne.Do(func() {
 
+					fyne.Do(func() {
+						loadConfigFromFile()
 						w.Show()
 						w.RequestFocus()
+						w.Canvas().Focus(nil)
 
 					})
 				}
@@ -392,6 +445,7 @@ func main() {
 			//appendOutput(outputText, fmt.Sprintf("Папка сохранения выбрана: %s\n", chosenPath))
 		}, w)
 	})
+	//browseBtn.Importance = widget.WarningImportance
 
 	scheduleEntry := widget.NewEntry()
 	scheduleEntry.SetPlaceHolder("Интервал (дней, 1–31). По-умолчанию - 1")
@@ -435,15 +489,15 @@ func main() {
 	scroll.Refresh()
 
 	w.CenterOnScreen()
-	asIsCheck := widget.NewCheck("Как есть", nil)
-	platformCheck := widget.NewCheck("Платформа", nil)
-	regionCheck := widget.NewCheck("Регион          ", nil)
+	asIsCheck = widget.NewCheck("Как есть", nil)
+	platformCheck = widget.NewCheck("Платформа", nil)
+	regionCheck = widget.NewCheck("Регион          ", nil)
 
-	updateCheck := widget.NewCheck("Обновление", nil)
-	progressCheck := widget.NewCheck("Прогресс", nil)
+	updateCheck = widget.NewCheck("Обновление", nil)
+	progressCheck = widget.NewCheck("Прогресс", nil)
 
-	dcCheck := widget.NewCheck("ЦОД", nil)
-	lanCheck := widget.NewCheck("ЛВС", nil)
+	dcCheck = widget.NewCheck("ЦОД", nil)
+	lanCheck = widget.NewCheck("ЛВС", nil)
 
 	//testBtn := widget.NewButton("Тест уведомления", func() {
 	//	NotifySuccess("Тест", "Это уведомление от beeep!")
@@ -1048,6 +1102,7 @@ func main() {
 
 		login := strings.TrimSpace(loginEntry.Text)
 		pass := strings.TrimSpace(passEntry.Text)
+		//888
 		token := strings.TrimSpace(netboxEntry.Text)
 		path := strings.TrimSpace(savePathEntry.Text)
 		//println(savePathEntry.Text + "путь")
@@ -1128,7 +1183,7 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 					} else {
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+							_ = appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 						//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
@@ -1155,25 +1210,26 @@ func main() {
 					} else {
 						//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+							_ = appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 					}
 				}
-				//if dcCheck.Checked && lanCheck.Checked {
-				//} else
 
 			}
-			if manualRun == false {
-				cfg.LastRun = time.Now().Format(time.RFC3339)
+			if dcCheck.Checked && lanCheck.Checked {
 			} else {
-				manualRun = false
+				if manualRun == false {
+					cfg.LastRun = time.Now().Format(time.RFC3339)
+				} else {
+					manualRun = false
+				}
+				fyne.Do(func() {
+					scroll.ScrollToBottom()
+					scroll.Refresh()
+					allUnblock()
+				})
 			}
-			fyne.Do(func() {
-				scroll.ScrollToBottom()
-				scroll.Refresh()
-				allUnblock()
-			})
 		}
 
 		if lanCheck.Checked {
@@ -1237,12 +1293,12 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 						//_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
+							_ = appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 					} else {
 						//fyne.Do(func() {
-						_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+						_ = appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
 						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						//})
 						//_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
@@ -1270,13 +1326,13 @@ func main() {
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
+							_ = appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
 						})
 						//_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 					} else {
 						//fyne.Do(func() {
-						_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+						_ = appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
 						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
 						//})
 						//_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
@@ -1310,11 +1366,26 @@ func main() {
 
 		// Если config.json существует И расписание настроено → спрашиваем
 		if fileExists(configPath) && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
+			if platformCheck.Checked {
+				//print(strings.TrimSpace(netboxEntry.Text), "here is token")
+				if netboxEntry.Text == "" || cfg.NetboxToken == "" {
+					dialog.ShowInformation("Ой!", "⚠️ Нет токена Netbox.\nСбросьте настройки и сохраните токен", w)
+					return
+					//45
+
+				}
+			}
 			dialog.ShowConfirm(
 				"Ой!",
 				"Загрузить принудительно?\n",
 				func(confirmed bool) {
 					if confirmed {
+						if platformCheck.Checked && cfg.NetboxToken == "" {
+							token := strings.TrimSpace(netboxEntry.Text)
+							if token != "" {
+								token = cfg.NetboxToken
+							}
+						}
 						//clearLogKeepHeader(outputText, &output.Entry)
 						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
 						manualRun = true

@@ -49,18 +49,6 @@ func SortByRegion(srcDir, dstBase string, output binding.String, scroll *contain
 
 	_ = os.RemoveAll(dstBase)
 
-	//if dcCheck {
-	//	if dirExists(dstBase) {
-	//		os.RemoveAll(dstBase)
-	//	}
-	//}
-	//
-	//if lanCheck {
-	//	if dirExists(dstBase) {
-	//		os.RemoveAll(dstBase)
-	//	}
-	//} //types = append(types, "ЛВС")
-
 	if err != nil {
 		Append(output, scroll, fmt.Sprintf("Ошибка чтения папки %s: %v\n", srcDir, err))
 		return err
@@ -80,14 +68,16 @@ func SortByRegion(srcDir, dstBase string, output binding.String, scroll *contain
 		folderName := entry.Name()
 		regionName := GetRegionName(folderName)
 		targetDir := filepath.Join(dstBase, regionName) // ← ГЛАВНОЕ ИЗМЕНЕНИЕ: используем dstBase
-
+		//println(targetDir, "- targetDir")
 		if err := os.MkdirAll(targetDir, 0777); err != nil {
 			Append(output, scroll, fmt.Sprintf("Ошибка создания папки %s: %v\n", regionName, err))
 			continue
 		}
 
 		// Копируем всё содержимое папки
+
 		srcPath := filepath.Join(srcDir, folderName)
+		//println(srcPath, "-srcPath")
 		if err := copyDirContents(srcPath, targetDir, output); err != nil {
 			Append(output, scroll, fmt.Sprintf("Ошибка копирования %s: %v\n", folderName, err))
 		} else {
@@ -221,6 +211,7 @@ func copyDirContents(src, dst string, output binding.String) error {
 
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
+
 		dstPath := filepath.Join(dst, entry.Name())
 
 		if entry.IsDir() {
@@ -265,9 +256,16 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+var t = 0
+
 func Append(output binding.String, scroll *container.Scroll, text string) {
 	current, _ := output.Get()
 	_ = output.Set(current + text)
+	t++
+	if t > 40 {
+		_ = output.Set("Продолжаем сортировку...\n")
+		t = 0
+	}
 	fyne.Do(func() {
 		scroll.ScrollToBottom()
 		//scroll.Refresh()

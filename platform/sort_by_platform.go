@@ -34,8 +34,8 @@ func SortFilesByPlatform(
 		typeDirs = append(typeDirs, "ЛВС")
 	}
 
-	//allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
-	allowedRoots := []string{"DV"}
+	allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
+	//allowedRoots := []string{"DV"}
 
 	for _, t := range typeDirs {
 		//println(t, srcDir)
@@ -99,77 +99,6 @@ func SortFilesByPlatform(
 	os.RemoveAll(filepath.Dir(srcDir))
 	return nil
 }
-
-// SortFilesByPlatform рекурсивно обходит srcDir,
-// определяет платформу каждого файла и копирует в dstDir/<Платформа>/,
-// при этом обновляет bindableText (например, для поля вывода в GUI).
-//func SortFilesByPlatform(srcDir, dstDir, netboxToken string, output binding.String, scroll *container.Scroll, dcCheck, lanCheck bool) error {
-//	allowedPrefixes := []string{
-//		"PRNG-DC", "DVPR-DC", "SZSP-DC", "CEMO-DC",
-//		"CEMS-DC", "UREK-DC", "UKFR-DC", "SINO-DC",
-//	}
-//	//очистить папку config_files_clear
-//	if err := ClearDestination(dstDir); err != nil {
-//		return err
-//	}
-//
-//	//очистить папку configs в конце процесса
-//	success := false
-//	defer func() {
-//		if success {
-//			RemoveSourceAfterSuccess(srcDir, output)
-//		}
-//	}()
-//
-//	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
-//		if err != nil {
-//			return err
-//		}
-//
-//		if info.IsDir() {
-//			return nil
-//		}
-//
-//		fileName := info.Name()
-//
-//		valid := false
-//		for _, prefix := range allowedPrefixes {
-//			if strings.HasPrefix(strings.ToUpper(fileName), prefix) {
-//				valid = true
-//				break
-//			}
-//		}
-//		if !valid {
-//			return nil
-//		}
-//
-//		deviceName := strings.Split(fileName, ".")[0]
-//		platform, err := nb.GetDevicePlatform(deviceName, netboxToken)
-//		if err != nil {
-//			AppendToOutput(output, scroll, "[ERROR] "+deviceName+": "+err.Error())
-//			return nil
-//		}
-//		if platform == "" {
-//			platform = "Unknown"
-//
-//		}
-//
-//		targetDir := filepath.Join(dstDir, platform)
-//		os.MkdirAll(targetDir, 0777)
-//
-//		targetFile := filepath.Join(targetDir, fileName)
-//		if err := copyFile(path, targetFile); err != nil {
-//			AppendToOutput(output, scroll, "[ERROR] copy "+fileName+": "+err.Error())
-//			return nil
-//		}
-//
-//		AppendToOutput(output, scroll, fmt.Sprintf("[%s] >> %s", platform, fileName))
-//		time.Sleep(20 * time.Millisecond)
-//		return nil
-//	})
-//
-//	return err
-//}
 
 // appendToOutput безопасно добавляет строку в binding.String (для GUI)
 func dirExists(path string) bool {
