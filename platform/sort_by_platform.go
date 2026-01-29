@@ -39,7 +39,7 @@ func SortFilesByPlatform(
 
 	for _, t := range typeDirs {
 		//println(t, srcDir)
-		AppendToOutput(output, scroll, fmt.Sprintf("Начинаю сортировку для УЭС%s \n", t))
+		AppendToOutput(output, scroll, fmt.Sprintf("⏳ Начинаю сортировку для УЭС%s \n", t))
 		//typeSrc := filepath.Join(srcDir)
 		//println(typeSrc, "- typesrc")
 		if !dirExists(srcDir) {
@@ -121,7 +121,7 @@ func AppendToOutput(output binding.String, scroll *container.Scroll, text string
 	_ = output.Set(current + text + "\n")
 	t++
 	if t > 40 {
-		_ = output.Set("Продолжаем сортировку...\n")
+		_ = output.Set("🔥 Продолжаем сортировку...\n")
 		t = 0
 	}
 	fyne.Do(func() {

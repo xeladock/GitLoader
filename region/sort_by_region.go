@@ -231,13 +231,13 @@ func copyDirContents(src, dst string, output binding.String) error {
 	return nil
 }
 
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
+//func dirExists(path string) bool {
+//	info, err := os.Stat(path)
+//	if err != nil {
+//		return false
+//	}
+//	return info.IsDir()
+//}
 
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
@@ -263,7 +263,7 @@ func Append(output binding.String, scroll *container.Scroll, text string) {
 	_ = output.Set(current + text)
 	t++
 	if t > 40 {
-		_ = output.Set("Продолжаем сортировку...\n")
+		_ = output.Set("🔥 Продолжаем сортировку...\n")
 		t = 0
 	}
 	fyne.Do(func() {

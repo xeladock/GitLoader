@@ -34,6 +34,28 @@ var trayIcon []byte
 var isAutoRun = false // ← флаг: запущено ли по расписанию
 var manualRun = false
 
+var (
+	asIsCheck     *widget.Check
+	platformCheck *widget.Check
+	regionCheck   *widget.Check
+
+	progressCheck *widget.Check
+	updateCheck   *widget.Check
+
+	dcCheck     *widget.Check
+	lanCheck    *widget.Check
+	scroll      *container.Scroll
+	outputText  binding.String
+	nextRunTime time.Time
+	targetTime  time.Duration
+	interval    time.Duration
+	cfg         *conf.AppConfig
+	cloneBtn    *widget.Button
+	cancel      chan struct{}
+	//schedulerRunning bool
+	// ... другие виджеты, если нужноasIsCheck
+)
+
 //var skipManualDialog = false
 //
 //func clearLogKeepHeader(textBinding binding.String, entry *widget.Entry) {
@@ -71,25 +93,6 @@ func isValidTime(s string) bool {
 	m, errM := strconv.Atoi(minute)
 	return errH == nil && errM == nil && h >= 0 && h <= 23 && m >= 0 && m <= 59
 }
-
-//	func copyDir(src, dst string) error {
-//		return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-//			if err != nil {
-//				return err
-//			}
-//			rel, _ := filepath.Rel(src, path)
-//			target := filepath.Join(dst, rel)
-//
-//			if info.IsDir() {
-//				return os.MkdirAll(target, info.Mode())
-//			}
-//			data, err := os.ReadFile(path)
-//			if err != nil {
-//				return err
-//			}
-//			return os.WriteFile(target, data, info.Mode())
-//		})
-//	}
 
 func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fyne.Window) bool {
 	if !asIsCheck.Checked && !platformCheck.Checked && !regionCheck.Checked {
@@ -151,8 +154,7 @@ func RemoveGitFolder(dir string, output binding.String) error {
 		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
 		return err
 	}
-	//time.Sleep(1)
-	//appendOutput(output, "Папка .git удалена.\n")
+
 	return nil
 }
 
@@ -179,23 +181,9 @@ func LoadConfig(path string) (*conf.AppConfig, error) {
 	return cfg, nil
 }
 
-var (
-	asIsCheck     *widget.Check
-	platformCheck *widget.Check
-	regionCheck   *widget.Check
-
-	progressCheck *widget.Check
-	updateCheck   *widget.Check
-
-	dcCheck  *widget.Check
-	lanCheck *widget.Check
-
-	// ... другие виджеты, если нужно
-)
-
 // восстановление боксов после переоткрытия
 func loadConfigFromFile() {
-	const configPath = "config.json"
+
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return
@@ -238,9 +226,6 @@ func loadConfigFromFile() {
 		lanCheck.SetChecked(false)
 	}
 
-	//loginEntry.SetText(cfg.GitLabLogin)
-
-	// ... остальные поля ...
 }
 
 // для остановки
@@ -256,6 +241,58 @@ func loadConfigFromFile() {
 //	LastRun        string `json:"last_run,omitempty"`
 //	SchedulerState string `json:"scheduler_state"`
 //}
+
+func updateHint() {
+	var lines []string
+	//outputText := binding.NewString()
+
+	// --- Сортировка ---
+	if asIsCheck.Checked {
+		lines = append(lines, "🔎Сортировка: как есть (без изменений).")
+		//netboxEntry.Disable()
+		//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
+	} else if platformCheck.Checked {
+		//netboxEntry.Enable()
+		//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
+		lines = append(lines, "🔎Сортировка: по платформам.")
+	} else if regionCheck.Checked {
+		lines = append(lines, "🔎Сортировка: по регионам.")
+		//netboxEntry.Disable()
+		//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
+	}
+
+	// --- Режим сохранения ---
+	if updateCheck.Checked {
+		lines = append(lines, "📂Режим: Обновление текущих файлов (перезапись)")
+	} else if progressCheck.Checked {
+		lines = append(lines, "📂Режим: Сохранение истории (архив по дням)")
+	}
+
+	if dcCheck.Checked && lanCheck.Checked {
+		lines = append(lines, "🗃️Цель: ЦОД и ЛВС\n")
+	} else if dcCheck.Checked {
+		lines = append(lines, "🗃️Цель: ЦОД\n")
+	} else if lanCheck.Checked {
+		lines = append(lines, "🗃️Цель: ЛВС\n")
+	}
+
+	// Выводим
+	if len(lines) == 0 {
+		_ = outputText.Set("")
+		fyne.Do(func() {
+			scroll.Refresh()
+			//allUnblock()
+		})
+	} else {
+		_ = outputText.Set(strings.Join(lines, "\n"))
+
+		fyne.Do(func() {
+			scroll.Refresh()
+			//allUnblock()
+		})
+
+	}
+}
 
 type ReadOnlyEntry struct {
 	widget.Entry
@@ -302,25 +339,90 @@ func NotifyError(title, message string) {
 	//cmd.Run()
 }
 
-//func NotifySuccess(title, message string) {
-//	beeep.Notify(title, message, "") // можно указать иконку
-//}
-//
-//func NotifyError(title, message string) {
-//	beeep.Alert(title, message, "icon/icon.png")
-//}
+const configPath = "config.json"
+
+func NextTime(cfg *conf.AppConfig) string {
+	if cfg == nil {
+		return "Конфигурация не загружена"
+	}
+	println("12345")
+	if cfg.ScheduleDays <= 0 || cfg.ScheduleTime == "" {
+		return "Планировщик не настроен"
+	}
+
+	// Парсим scheduleTime (формат "HH:MM")
+	parts := strings.Split(cfg.ScheduleTime, ":")
+	if len(parts) != 2 {
+		return "Неверный формат времени в настройках"
+	}
+
+	hour, errH := strconv.Atoi(parts[0])
+	minute, errM := strconv.Atoi(parts[1])
+	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+		return "Некорректное время в настройках"
+	}
+
+	now := time.Now()
+	loc := now.Location()
+
+	// Рассчитываем время следующего запуска
+	var nextRun time.Time
+
+	if cfg.LastRun == "" {
+		// Первый запуск — сегодня в указанное время
+		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+		if now.After(today) || now.Equal(today) {
+			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+		} else {
+			nextRun = today
+		}
+	} else {
+		// Есть LastRun — считаем от него
+		last, err := time.Parse(time.RFC3339, cfg.LastRun)
+		if err != nil {
+			return "Ошибка парсинга LastRun"
+		}
+
+		nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
+		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+
+		// Если nextRun в прошлом — добавляем дни
+		for !nextRun.After(now) {
+			nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
+		}
+	}
+
+	delay := time.Until(nextRun)
+
+	hours := int(delay.Hours())
+	minutes := int(delay.Minutes()) % 60
+
+	//println(
+	//	"Следующий запуск: %s в %s. (через %d ч. %d мин.)",
+	//	nextRun.Format("02.01.2006"),
+	//	nextRun.Format("15:04"),
+	//	hours,
+	//	minutes,
+	//)
+	return fmt.Sprintf("▶ Планировщик запущен.\n"+
+		"🔄  Следующий запуск: %s в %s. (через %d ч. %d мин.)",
+		nextRun.Format("02.01.2006"),
+		nextRun.Format("15:04"),
+		hours,
+		minutes,
+	)
+}
 
 func main() {
-
-	const configPath = "config.json"
-
-	var cfg *conf.AppConfig
+	//const configPath = "config.json"
+	//var cfg *conf.AppConfig
+	//var err error
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		// файла нет — просим пользователя ввести данные
 		cfg = &conf.AppConfig{}
 	}
-
+	//cancel = make(chan struct{})
 	targetDir := "./configs" // куда клонируем репо
 	sortedDst := "./config_files_clear"
 
@@ -350,7 +452,7 @@ func main() {
 			//systray.SetTooltip("GitLab Downloader")
 			systray.SetTitle("GitTornado")
 			systray.SetTooltip("GitTornado v1.0")
-
+			//999
 			open := systray.AddMenuItem("Открыть", "Показать программу")
 			quit := systray.AddMenuItem("Выход", "Закрыть программу")
 
@@ -359,11 +461,24 @@ func main() {
 
 					fyne.Do(func() {
 						loadConfigFromFile()
+						outputText.Set("")
+						updateHint()
+						if fileExists(configPath) && cfg.SchedulerState == "running" {
+							appendOutput(outputText, NextTime(cfg))
+						} else if fileExists(configPath) && cfg.SchedulerState == "paused" {
+							appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик на ПАУЗЕ. Нажмите «Старт» для возобновления.")
+						}
+
+						//refreshSchedulerStatus()
+						//appendOutput(outputText, fmt.Sprintf("12222222"))
+
 						w.Show()
 						w.RequestFocus()
 						w.Canvas().Focus(nil)
+						scroll.Refresh()
 
 					})
+
 				}
 			}()
 
@@ -403,7 +518,7 @@ func main() {
 	netboxEntry := widget.NewEntry()
 	netboxEntry.SetPlaceHolder("Введите API NetBox Token")
 	netboxEntry.Password = true
-	netboxEntry.Disable()
+	//netboxEntry.Disable()
 
 	//выбор папки
 	savePathEntry := widget.NewEntry()
@@ -454,7 +569,7 @@ func main() {
 	timeEntry := widget.NewEntry()
 	timeEntry.SetPlaceHolder("Время обновления (HH:MM). По-умолчанию - 00:00")
 	//aaaa
-	outputText := binding.NewString()
+	outputText = binding.NewString()
 	//output := widget.NewMultiLineEntry()
 
 	output := NewReadOnlyEntry()
@@ -465,7 +580,7 @@ func main() {
 	//output.Wrapping = fyne.TextWrapWord
 	//output.SetMinRowsVisible(15)
 	//scroll := container.NewVScroll(output)
-	scroll := container.NewVScroll(output)
+	scroll = container.NewVScroll(output)
 	//scroll.SetMinSize(fyne.NewSize(600, 300))
 	//scroll.SetMinSize(fyne.NewSize(600, 300))  // твой размер
 	//scroll.Resize(fyne.NewSize(600, 300))
@@ -507,57 +622,6 @@ func main() {
 	//	NotifySuccess("Тест", "Это уведомление от beeep!")
 	//}
 
-	updateHint := func() {
-		var lines []string
-
-		// --- Сортировка ---
-		if asIsCheck.Checked {
-			lines = append(lines, "🔎Сортировка: как есть (без изменений).")
-			netboxEntry.Disable()
-			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
-		} else if platformCheck.Checked {
-			netboxEntry.Enable()
-			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
-			lines = append(lines, "🔎Сортировка: по платформам.")
-		} else if regionCheck.Checked {
-			lines = append(lines, "🔎Сортировка: по регионам.")
-			netboxEntry.Disable()
-			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
-		}
-
-		// --- Режим сохранения ---
-		if updateCheck.Checked {
-			lines = append(lines, "📂Режим: Обновление текущих файлов (перезапись)")
-		} else if progressCheck.Checked {
-			lines = append(lines, "📂Режим: Сохранение истории (архив по дням)")
-		}
-
-		if dcCheck.Checked && lanCheck.Checked {
-			lines = append(lines, "🗃️Цель: ЦОД и ЛВС\n")
-		} else if dcCheck.Checked {
-			lines = append(lines, "🗃️Цель: ЦОД\n")
-		} else if lanCheck.Checked {
-			lines = append(lines, "🗃️Цель: ЛВС\n")
-		}
-
-		// Выводим
-		if len(lines) == 0 {
-			_ = outputText.Set("")
-			fyne.Do(func() {
-				scroll.Refresh()
-				//allUnblock()
-			})
-		} else {
-			_ = outputText.Set(strings.Join(lines, "\n"))
-
-			fyne.Do(func() {
-				scroll.Refresh()
-				//allUnblock()
-			})
-
-		}
-	}
-
 	// === ОБРАБОТЧИКИ СОРТИРОВКИ ===
 	asIsCheck.OnChanged = func(checked bool) {
 		if checked {
@@ -571,11 +635,11 @@ func main() {
 		if checked {
 			asIsCheck.SetChecked(false) // ← было platformCheck!
 			regionCheck.SetChecked(false)
-		} else {
-			///d2
-			//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
-			//netboxEntry.SetText("")
-			netboxEntry.Disable()
+			//} else {
+			//	///d2
+			//	//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
+			//	//netboxEntry.SetText("")
+			//	netboxEntry.Disable()
 
 		}
 		updateHint()
@@ -863,9 +927,9 @@ func main() {
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
 			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
-			if !platformCheck.Checked {
-				cfg.NetboxToken = ""
-			}
+			//if !platformCheck.Checked {
+			//	cfg.NetboxToken = ""
+			//}
 			_ = saveConfig(cfg, configPath)
 			//if fileExists(configPath) {
 			browseBtn.Disable()
@@ -924,7 +988,7 @@ func main() {
 		savePathEntry.SetText("")
 		savePathEntry.SetPlaceHolder("Папка загрузки")
 		browseBtn.Enable()
-		netboxEntry.Disable()
+		//netboxEntry.Disable()
 		appendOutput(outputText, "⚙️ Настройки сброшены.\n")
 		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 		updateButtonState()
@@ -947,6 +1011,14 @@ func main() {
 				return
 			}
 
+			if platformCheck.Checked {
+				if netboxEntry.Text == "" && !fileExists(configPath) {
+					dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+					return
+
+				}
+			}
+
 			if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 				return
 			}
@@ -956,20 +1028,13 @@ func main() {
 			if !targetModeSelected(dcCheck, lanCheck, w) {
 				return
 			}
-			if platformCheck.Checked {
-				if netboxEntry.Text == "" && !fileExists(configPath) {
-					dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
-					return
-
-				}
-			}
 
 		}
 
 		//
 		if saveBtn.Text == "Сбросить" {
 			dialog.ShowConfirm(
-				"Подтверждение",
+				"Ой!",
 				"Вы уверены, что хотите удалить все сохранённые данные?",
 				func(confirmed bool) {
 					if confirmed {
@@ -1075,6 +1140,13 @@ func main() {
 			return
 		}
 
+		//if platformCheck.Checked {
+		if netboxEntry.Text == "" && !fileExists(configPath) {
+			dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
+			return
+		}
+		//}
+
 		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
 			return
 		}
@@ -1084,12 +1156,6 @@ func main() {
 		if !targetModeSelected(dcCheck, lanCheck, w) {
 			return
 		}
-		if platformCheck.Checked {
-			if netboxEntry.Text == "" && !fileExists(configPath) {
-				dialog.ShowInformation("Ой!", "⚠️ Нет токена.", w)
-				return
-			}
-		}
 
 		outputText.Set("")
 		updateHint()
@@ -1098,7 +1164,7 @@ func main() {
 		// ... проверки логина/пароля ...
 		fyne.Do(allBlock)
 		//allBlock()
-		_ = appendOutput(outputText, "Начинаю загрузку из GitLab...\n")
+		_ = appendOutput(outputText, "🔥 Начинаю загрузку из GitLab...\n")
 
 		login := strings.TrimSpace(loginEntry.Text)
 		pass := strings.TrimSpace(passEntry.Text)
@@ -1366,26 +1432,11 @@ func main() {
 
 		// Если config.json существует И расписание настроено → спрашиваем
 		if fileExists(configPath) && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
-			if platformCheck.Checked {
-				//print(strings.TrimSpace(netboxEntry.Text), "here is token")
-				if netboxEntry.Text == "" || cfg.NetboxToken == "" {
-					dialog.ShowInformation("Ой!", "⚠️ Нет токена Netbox.\nСбросьте настройки и сохраните токен", w)
-					return
-					//45
-
-				}
-			}
 			dialog.ShowConfirm(
 				"Ой!",
 				"Загрузить принудительно?\n",
 				func(confirmed bool) {
 					if confirmed {
-						if platformCheck.Checked && cfg.NetboxToken == "" {
-							token := strings.TrimSpace(netboxEntry.Text)
-							if token != "" {
-								token = cfg.NetboxToken
-							}
-						}
 						//clearLogKeepHeader(outputText, &output.Entry)
 						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
 						manualRun = true

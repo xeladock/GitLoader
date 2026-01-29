@@ -122,12 +122,13 @@ func CreateStartPauseButton(
 			//cloneAction,
 			output,
 			schedulerCancel,
+			updateHint,
 		)
 
 	} else if cfg.SchedulerState == "paused" {
 		updateButtonAppearance(btn, false)
 		fyne.Do(func() {
-			appendOutput(output, "ВНИМАНИЕ! Планировщик на ПАУЗЕ. Нажмите «Старт» для возобновления.\n")
+			appendOutput(output, "⚠️ ВНИМАНИЕ! Планировщик на ПАУЗЕ. Нажмите «Старт» для возобновления.\n")
 		})
 	} else {
 		updateButtonAppearance(btn, false)
@@ -174,13 +175,14 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 		//cloneAction,
 		output,
 		schedulerCancel,
+		updateHint,
 	)
 
 	fyne.Do(func() {
 		//isAutoRun = true
 		updateButtonAppearance(btn, true)
-		//scroll.ScrollToBottom()
-		scrollToBottom(scroll)
+		scroll.ScrollToBottom()
+		//scrollToBottom(scroll)
 		//scroll.Offset = fyne.NewPos(0, scroll.Offset.Y+1000) // ← прокрутка вниз
 		//scroll.Refresh()
 		//scroll.ScrollToBottom() // ← обновление
@@ -196,6 +198,8 @@ func stopScheduler(cfg *config.AppConfig, configPath string, output binding.Stri
 	schedulerRunning = false
 	cfg.SchedulerState = "paused"
 	_ = saveConfig(cfg, configPath)
+	outputText.Set("")
+	updateHint()
 
 	fyne.Do(func() {
 		updateButtonAppearance(btn, false)
@@ -205,16 +209,17 @@ func stopScheduler(cfg *config.AppConfig, configPath string, output binding.Stri
 		scroll.Refresh()
 		//scroll.ScrollToBottom() // ← обновление
 	})
-	appendOutput(output, "Планировщик на паузе.\n")
+
+	appendOutput(output, "⏸ Планировщик на паузе.\n")
 	//appendOutput(output, "")
 
 }
 
 func scrollToBottom(scroll *container.Scroll) {
-	scroll.ScrollToBottom()
 	// Принудительно ставим offset на максимум
 	fyne.Do(func() {
 		scroll.Offset = fyne.NewPos(0, scroll.Content.Size().Height+100) // +100 на всякий случай
+		scroll.ScrollToBottom()
 		scroll.Refresh()
 	})
 }

@@ -3,13 +3,19 @@ package scheduler
 
 import (
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	//"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	//"fyne.io/fyne/v2/widget"
+	//"fyne.io/fyne/v2/widget"
 )
+
+type UpdateHintFunc func()
 
 // Start запускает планировщик
 // cfgPath — путь к config.json (чтобы сохранить LastRun)
@@ -25,6 +31,7 @@ func Start(
 	cloneAction func(),
 	output binding.String,
 	cancel <-chan struct{},
+	updateHint UpdateHintFunc,
 ) {
 	if scheduleDays <= 0 || scheduleTime == "" {
 		return
@@ -45,24 +52,26 @@ func Start(
 	targetTime := time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute
 	interval := 24 * time.Hour * time.Duration(scheduleDays)
 
-	appendLog(output, fmt.Sprintf("Планировщик запущен.\n"))
+	output.Set("")
+	updateHint()
+	appendLog(output, fmt.Sprintf("▶ Планировщик запущен.\n"))
 
 	//time.AfterFunc(1*time.Second, func() {
 	ScheduleNext(cfgPath, targetTime, interval, lastRun, onUpdateLastRun, cloneAction, output, cancel, true) // ← true: печатаем сообщение сразу
 	//})
 }
 
-func clearLogKeepHeader() {
-	outputText := binding.NewString()
-	current, _ := outputText.Get()
-	lines := strings.Split(current, "\n")
-
-	// Оставляем только последние 2 строки (заголовок)
-	if len(lines) > 2 {
-		header := strings.Join(lines[len(lines)-3:], "\n") // -3 потому что последняя пустая
-		outputText.Set(header + "\n")
-	}
-}
+//func clearLogKeepHeader() {
+//	outputText := binding.NewString()
+//	current, _ := outputText.Get()
+//	lines := strings.Split(current, "\n")
+//
+//	// Оставляем только последние 2 строки (заголовок)
+//	if len(lines) > 2 {
+//		header := strings.Join(lines[len(lines)-3:], "\n") // -3 потому что последняя пустая
+//		outputText.Set(header + "\n")
+//	}
+//}
 
 func ScheduleNext(
 	cfgPath string,
@@ -106,7 +115,7 @@ func ScheduleNext(
 	if printNext {
 		hours := int(delay.Hours())
 		minutes := int(delay.Minutes()) % 60
-		appendLog(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
 			hours, minutes))
@@ -115,36 +124,32 @@ func ScheduleNext(
 	time.AfterFunc(delay, func() {
 		select {
 		case <-cancel:
-			appendLog(output, "Планировщик остановлен.\n")
+			appendLog(output, "❌ Планировщик остановлен.\n")
 			return
 		default:
 		}
 
 		fyne.Do(func() {
-			clearLogKeepHeader()
-			appendLog(output, fmt.Sprintf("Скачивание по расписанию: %s в %s\n", now.Format("02.01.2006"), now.Format("15:04")))
+			appendLog(output, fmt.Sprintf("🚨 Выполняю загрузку по расписанию: %s в %s\n", now.Format("02.01.2006"), now.Format("15:04")))
+			NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
+			time.Sleep(1000 * time.Millisecond)
 			cloneAction()
 		})
 
 		newLastRun := time.Now().Format(time.RFC3339)
 		onUpdateLastRun(newLastRun)
-		//nextDelay := time.Until(nextRun.Add(interval))
-		//hours := int(nextDelay.Hours())
-		//minutes := int(nextDelay.Minutes()) - hours*60
-		//appendLog(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
-		//	nextRun.Add(interval).Format("02.01.2006"),
-		//	nextRun.Add(interval).Format("15:04"),
-		//	hours, minutes))
 
-		// Следующий цикл — печатаем сообщение ПОСЛЕ выполнения
 		ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false) // ← true: печатаем в следующем цикле
 	})
 }
 
+func NotifySuccess(title, message string) {
+	//exec.Command("paplay", "./icon/yes.mp3").Run()
+	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "5000", title, message).Run()
+	//cmd.Run() // ошибки молча игнорируем
+}
+
 func appendLog(output binding.String, text string) {
-	if output == nil {
-		return
-	}
 	current, _ := output.Get()
 	_ = output.Set(current + text)
 }

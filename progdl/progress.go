@@ -90,8 +90,8 @@ func RunProgressMode(
 	dateStr := time.Now().Format("02-01-06")
 	folderName := filepath.Base(targetDir)
 	datedDir := filepath.Join(path, dateStr, "config_files_clear", folderName)
-	println(targetDir, "target в progress.go")
-	println(datedDir, "datedDir в progress.go")
+	//println(targetDir, "target в progress.go")
+	//println(datedDir, "datedDir в progress.go")
 	if err := os.MkdirAll(datedDir, 0777); err != nil {
 		return err
 	}
@@ -114,12 +114,34 @@ func RunProgressMode(
 		}
 	}
 
+	_ = appendOutput(
+		output,
+		fmt.Sprintf("📣Файлы %s сохранены в папку: %s\n", folderName, dateStr),
+	)
+	time.Sleep(1000 * time.Millisecond)
+
 	// === Сохранение в папку с датой ===
 	//dateStr := time.Now().Format("02-01-06") // 27-11-25
 	//datedDir := filepath.Join(".", dateStr, "config_files_clear")
+	//switch {
+	//case dcCheck && lanCheck:
+	//	_ = appendOutput(output,
+	//		"Файлы ЛВС и ЦОД сохранены в папку: "+dateStr)
+	//case dcCheck:
+	//	_ = appendOutput(output,
+	//		"Файлы ЦОД сохранены в папку: "+dateStr)
+	//case lanCheck:
+	//	_ = appendOutput(output,
+	//		"Файлы ЛВС сохранены в папку: "+dateStr)
+	//}
 
 	//_ = appendOutput(output, "Сохранение архивной копии («прогресс»)...\n")
-	_ = appendOutput(output, "Сохранено в папку: "+dateStr+"\n")
+	//if dcCheck {
+	//_ = appendOutput(output, "Файлы ЦОД сохранены в папку: "+dateStr+"")
+	//}
+	//if lanCheck {
+	//	_ = appendOutput(output, "Файлы ЛВС сохранены в папку: "+dateStr+"")
+	//}
 
 	//if err := os.MkdirAll(datedDir, 0755); err != nil {
 	//	return err
