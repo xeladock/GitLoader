@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	conf "configtool.local/conf"
+	"configtool.local/crypt"
 	"configtool.local/progdl"
 	"fyne.io/fyne/v2/theme"
 	//"configtool.local/start_stop"
@@ -34,6 +37,7 @@ var trayIcon []byte
 var isAutoRun = false // ← флаг: запущено ли по расписанию
 var manualRun = false
 
+// var SecretKey []byte
 var (
 	asIsCheck     *widget.Check
 	platformCheck *widget.Check
@@ -189,7 +193,7 @@ func loadConfigFromFile() {
 		return
 	}
 	switch cfg.Mode {
-	case "asis":
+	case "as-is":
 		asIsCheck.SetChecked(true)
 	case "platform":
 		platformCheck.SetChecked(true)
@@ -308,9 +312,91 @@ func (e *ReadOnlyEntry) Refresh() {
 	e.Entry.Refresh()
 }
 
+func hashString(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// 2
 // ❗ Полностью блокируем ввод с клавиатуры
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
 func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
+
+//func (e *ReadOnlyEntry) Focusable() bool {
+//	return false // ← главное: поле НЕ фокусируемо
+//}
+//
+//func (e *ReadOnlyEntry) FocusGained() {
+//	// Ничего не делаем — курсор не появляется
+//}
+
+// 2
+type ReadOnlyEntry2 struct {
+	widget.Entry
+	editable bool
+}
+
+func NewReadOnlyEntry2() *ReadOnlyEntry2 {
+	e := &ReadOnlyEntry2{}
+	e.ExtendBaseWidget(e)
+	e.editable = false // по умолчанию заблокировано
+	return e
+}
+
+func (e *ReadOnlyEntry2) Focusable() bool {
+	return e.editable
+}
+
+func (e *ReadOnlyEntry2) Tapped(*fyne.PointEvent) {
+	if !e.editable {
+		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
+			c.Focus(nil)
+		}
+		return
+	}
+	e.Entry.Tapped(nil)
+}
+
+func (e *ReadOnlyEntry2) FocusGained() {
+	if !e.editable {
+		// Снимаем фокус мгновенно
+		fyne.CurrentApp().Driver().CanvasForObject(e).Focus(nil)
+		return
+	}
+	e.Entry.FocusGained()
+}
+
+func (e *ReadOnlyEntry2) TypedRune(r rune) {
+	if e.editable {
+		e.Entry.TypedRune(r)
+	}
+}
+
+func (e *ReadOnlyEntry2) TypedKey(ev *fyne.KeyEvent) {
+	if e.editable {
+		e.Entry.TypedKey(ev)
+	}
+}
+
+func (e *ReadOnlyEntry2) SetEditable(editable bool) {
+	e.editable = editable
+	e.Refresh()
+
+	// Если отключили редактирование — сразу снимаем фокус
+	if !editable {
+		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
+			c.Focus(nil)
+		}
+	}
+}
+
+// Метод переключения режима
+//func (e *ReadOnlyEntry2) SetEditable(editable bool) {
+//	e.editable = editable
+//	e.Refresh()
+//}
+
+//2
 
 //type CleanLightTheme struct{}
 
@@ -328,14 +414,14 @@ type hiddenTheme struct{ fyne.Theme }
 func (hiddenTheme) ScrollBarSize() int { return 0 }
 
 func NotifySuccess(title, message string) {
-	exec.Command("paplay", "./icon/yes.mp3").Run()
 	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message).Run()
+	exec.Command("paplay", "./icon/yes.mp3").Run()
 	//cmd.Run() // ошибки молча игнорируем
 }
 
 func NotifyError(title, message string) {
-	exec.Command("paplay", "./icon/no.mp3").Run()
 	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message).Run()
+	exec.Command("paplay", "./icon/no.mp3").Run()
 	//cmd.Run()
 }
 
@@ -467,6 +553,8 @@ func main() {
 							appendOutput(outputText, NextTime(cfg))
 						} else if fileExists(configPath) && cfg.SchedulerState == "paused" {
 							appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик на ПАУЗЕ. Нажмите «Старт» для возобновления.")
+						} else if fileExists(configPath) && cfg.SchedulerState == "" {
+							appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
 						}
 
 						//refreshSchedulerStatus()
@@ -505,10 +593,22 @@ func main() {
 	// === END SYSTRAY ===
 
 	// Поля ввода
+	//output := NewReadOnlyEntry()
+	//4444
+	//loginEntry := widget.NewEntry()
+	loginEntry := NewReadOnlyEntry2()
+	println("login unlock at the begin")
 
-	loginEntry := widget.NewEntry()
+	if fileExists(configPath) {
+		loginEntry.SetEditable(false)
+	} else {
+		loginEntry.SetEditable(true)
+	}
+
 	loginEntry.SetPlaceHolder("Введите логин GitLab")
 	loginEntry.TextStyle = fyne.TextStyle{}
+	blocker := widget.NewLabel("") // перехватывает мышь
+	blocker.Resize(loginEntry.Size())
 
 	passEntry := widget.NewEntry()
 	passEntry.Password = true
@@ -800,15 +900,28 @@ func main() {
 	} else {
 		browseBtn.Enable()
 	}
+	if fileExists(configPath) && cfg.SchedulerState == "" {
+		appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
+	}
 
 	//сюда блок обзора
 	//PauseUpdateButtonState(startPauseBtn, cfg, configPath)
-
+	//9999
 	//записываем настройки
 	setConfig := func() {
+		encryptedPass, err := crypt.Encrypt(passEntry.Text, crypt.SecretKey)
+		if err != nil {
+			println(err.Error(), "ошибка")
+		}
+
+		encryptedToken, err := crypt.Encrypt(netboxEntry.Text, crypt.SecretKey)
+		if err != nil {
+			// обработка ошибки
+		}
+
 		cfg.GitLabLogin = loginEntry.Text
-		cfg.GitLabPass = passEntry.Text
-		cfg.NetboxToken = netboxEntry.Text
+		cfg.GitLabPass = encryptedPass
+		cfg.NetboxToken = encryptedToken
 
 		//
 		//if startPauseBtn.Text == "Старт" {
@@ -934,7 +1047,9 @@ func main() {
 			//if fileExists(configPath) {
 			browseBtn.Disable()
 			//}
-			appendOutput(outputText, "✅ Настройки сохранены.")
+			outputText.Set("")
+			updateHint()
+			appendOutput(outputText, "✅ Настройки сохранены. Нажмите СТАРТ для запуска планировщика.")
 			saveBtn.SetText("Сбросить")
 			//blockInputs()
 
@@ -945,9 +1060,11 @@ func main() {
 	updateButtonState := func() {
 		if _, err := os.Stat(configPath); err == nil {
 			saveBtn.SetText("Сбросить")
+
 			//blockInputs()
 		} else {
 			saveBtn.SetText("Сохранить")
+
 			//ckInputs()
 		}
 	}
@@ -961,6 +1078,8 @@ func main() {
 			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
 			return
 		}
+		loginEntry.SetEditable(true)
+		println("login editable in reset")
 		saveBtn.SetText("Сохранить")
 
 		// Сбрасываем GUI
@@ -1030,7 +1149,8 @@ func main() {
 			}
 
 		}
-
+		//passLabel := widget.NewLabel(passEntry.Text)
+		//loginLabel.Wrapping = fyne.TextWrapWord
 		//
 		if saveBtn.Text == "Сбросить" {
 			dialog.ShowConfirm(
@@ -1062,6 +1182,16 @@ func main() {
 		if saveBtn.Text == "Сбросить" {
 			loginEntry.SetText("")
 			loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
+			time.Sleep(32 * time.Millisecond) // ≈ 1 кадр при 60 fps
+			loginEntry.SetEditable(false)
+			loginEntry.FocusLost()
+			w.Canvas().Focus(nil)
+
+			//loginEntry.FocusLost()
+			//fyne.CurrentApp().Driver().CanvasForObject(loginEntry).Focus(nil)
+			println("login not editable in set")
+			//ReadOnlyEntry2(loginEntry)
+			//5555
 		}
 	}
 	passEntry.OnChanged = func(s string) {
@@ -1077,7 +1207,7 @@ func main() {
 			netboxEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
 		}
 	}
-
+	//w.Canvas().Focus(nil)
 	allBlock := func() {
 		cloneBtn.Disable()
 		saveBtn.Disable()
@@ -1173,18 +1303,29 @@ func main() {
 		path := strings.TrimSpace(savePathEntry.Text)
 		//println(savePathEntry.Text + "путь")
 		//println(path)
+		decryptedPass, err := crypt.Decrypt(cfg.GitLabPass, crypt.SecretKey)
+		if err != nil {
+			println(err.Error(), "decryptedPass")
+		}
+		decryptedToken, err := crypt.Decrypt(cfg.NetboxToken, crypt.SecretKey)
+		if err != nil {
+			println(err.Error(), "decryptedToken")
+		}
+
 		if login == "" && cfg.GitLabLogin != "" {
 			login = cfg.GitLabLogin
 		}
 		if pass == "" && cfg.GitLabPass != "" {
-			pass = cfg.GitLabPass
+			pass = decryptedPass
 		}
 		if token == "" && cfg.NetboxToken != "" {
-			token = cfg.NetboxToken
+			token = decryptedToken
 		}
 		if path == "" && cfg.SavedPlace != "" {
 			path = cfg.SavedPlace
 		}
+
+		os.RemoveAll(filepath.Join(path, targetDir))
 
 		//!загрузка ЦОД
 		if dcCheck.Checked {
@@ -1215,12 +1356,22 @@ func main() {
 				switch {
 				case strings.Contains(string(outputBytes), "Authentication failed"):
 					_ = appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
+
 				case strings.Contains(string(outputBytes), "not found"):
 					_ = appendOutput(outputText, "Ошибка: git не найден в PATH\n")
+
 				case strings.Contains(string(outputBytes), "Could not resolve host"):
 					_ = appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
+
 				case strings.Contains(string(outputBytes), "Repository not found"):
 					_ = appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
+
+				case err != nil && (os.IsPermission(err) ||
+					strings.Contains(strings.ToLower(err.Error()), "permission denied") ||
+					strings.Contains(strings.ToLower(err.Error()), "access denied") ||
+					strings.Contains(strings.ToLower(err.Error()), "read-only file system")):
+					_ = appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
+
 				default:
 					_ = appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
 				}
@@ -1324,12 +1475,22 @@ func main() {
 				switch {
 				case strings.Contains(string(outputBytes), "Authentication failed"):
 					_ = appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
+
 				case strings.Contains(string(outputBytes), "not found"):
 					_ = appendOutput(outputText, "Ошибка: git не найден в PATH\n")
+
 				case strings.Contains(string(outputBytes), "Could not resolve host"):
-					_ = appendOutput(outputText, "Ошибка: нет связи или сервер недоступен\n")
+					_ = appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
+
 				case strings.Contains(string(outputBytes), "Repository not found"):
 					_ = appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
+
+				case err != nil && (os.IsPermission(err) ||
+					strings.Contains(strings.ToLower(err.Error()), "permission denied") ||
+					strings.Contains(strings.ToLower(err.Error()), "access denied") ||
+					strings.Contains(strings.ToLower(err.Error()), "read-only file system")):
+					_ = appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
+
 				default:
 					_ = appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
 				}
@@ -1551,11 +1712,14 @@ func main() {
 	//	)
 	//
 	//}
-
+	//loginLabel := widget.NewLabel("1223")
 	// Сборка формы
+	locked := container.NewMax(passEntry, blocker)
 	form := container.NewVBox(
+		//loginLabel,
 		loginEntry,
-		passEntry,
+		//passEntry,
+		locked,
 		netboxEntry,
 		sortBlock,
 		passtargetButtonContainer,
@@ -1575,4 +1739,7 @@ func main() {
 
 	w.SetContent(form)
 	w.ShowAndRun()
+	form.Refresh()
+	w.Canvas().Refresh(form)
+
 }
