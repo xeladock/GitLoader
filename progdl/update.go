@@ -23,7 +23,7 @@ func RunUpdateMode(
 	}
 
 	if asIs {
-		println(targetDir, "--targetdir в update.go", sortedDst, "--sortedDst в update.go")
+		//println(targetDir, "--targetdir в update.go", sortedDst, "--sortedDst в update.go")
 		if err := asis.MoveAsIs(targetDir, sortedDst, output, dcCheck, lanCheck); err != nil {
 			return err
 		}
@@ -33,7 +33,7 @@ func RunUpdateMode(
 	}
 
 	if regionMode {
-		println(targetDir, "--targetdir в update.go", sortedDst, "--sortedDst в update.go")
+		//println(targetDir, "--targetdir в update.go", sortedDst, "--sortedDst в update.go")
 		if err := region.SortByRegion(targetDir, sortedDst, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}

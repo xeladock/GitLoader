@@ -261,13 +261,13 @@ var t = 0
 func Append(output binding.String, scroll *container.Scroll, text string) {
 	current, _ := output.Get()
 	_ = output.Set(current + text)
-	t++
-	if t > 40 {
-		_ = output.Set("🔥 Продолжаем сортировку...\n")
-		t = 0
-	}
+	//t++
+	//if t > 40 {
+	//	_ = output.Set("🔥 Продолжаем сортировку...\n")
+	//	t = 0
+	//}
 	fyne.Do(func() {
 		scroll.ScrollToBottom()
-		//scroll.Refresh()
+		scroll.Refresh()
 	})
 }

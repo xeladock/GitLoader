@@ -61,6 +61,17 @@ var (
 	// ... другие виджеты, если нужноasIsCheck
 )
 
+func scroollOutput(output binding.String, scroll *container.Scroll, msg string) {
+	fyne.Do(func() {
+		current, _ := output.Get()
+		_ = output.Set(current + msg)
+	})
+	fyne.Do(func() {
+		scroll.ScrollToBottom()
+		//scroll.Refresh()
+	})
+}
+
 //var skipManualDialog = false
 //
 //func clearLogKeepHeader(textBinding binding.String, entry *widget.Entry) {
@@ -1488,7 +1499,13 @@ func main() {
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
-						appendOutput(outputText, "⏳ Файлы ЦОД обработаны. Ожидаем файлы ЛВС.\n")
+						fyne.Do(func() {
+							appendOutput(outputText, "🟢 Файлы ЦОД обработаны. Ожидаем файлы ЛВС.\n")
+						})
+						//fyne.Do(func() {
+						//	scroll.ScrollToBottom()
+						//	scroll.Refresh()
+						//})
 					} else {
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
@@ -1515,6 +1532,9 @@ func main() {
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
+						fyne.Do(func() {
+							appendOutput(outputText, "🟢 Файлы ЦОД обработаны. Ожидаем файлы ЛВС.\n")
+						})
 					} else {
 						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 						fyne.Do(func() {

@@ -123,7 +123,7 @@ func ScheduleNext(
 	time.AfterFunc(delay, func() {
 		select {
 		case <-cancel:
-			appendLog(output, "❌ Планировщик остановлен.\n")
+			//appendLog(output, "❌ Планировщик остановлен.\n")
 			return
 		default:
 		}

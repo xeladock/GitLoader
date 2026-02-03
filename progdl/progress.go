@@ -118,6 +118,7 @@ func RunProgressMode(
 
 	appendOutput(
 		output,
+		scroll,
 		fmt.Sprintf("\n📣Файлы %s сохранены в папку:  %s\n", folderName, dateStr),
 	)
 	time.Sleep(500 * time.Millisecond)
@@ -160,7 +161,7 @@ func RunProgressMode(
 		hours := int(delay.Hours())
 		minutes := int(delay.Minutes()) - hours*60
 
-		appendOutput(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+		appendOutput(output, scroll, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
 			nextTime.Format("02.01.2006"),
 			nextTime.Format("15:04"),
 			hours, minutes))
@@ -210,11 +211,15 @@ func fileExists(path string) bool {
 //		//appendOutput(output, "Папка .git удалена.\n")
 //		return nil
 //	}
-func appendOutput(output binding.String, msg string) {
+func appendOutput(output binding.String, scroll *container.Scroll, msg string) {
 	fyne.Do(func() {
 		current, _ := output.Get()
 		_ = output.Set(current + msg)
 	})
+	//fyne.Do(func() {
+	//	scroll.ScrollToBottom()
+	//	//scroll.Refresh()
+	//})
 }
 
 //func appendOutput(bindStr binding.String, msg string) error {
