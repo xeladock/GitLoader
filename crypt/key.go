@@ -65,3 +65,72 @@ func Decrypt(encrypted string, key []byte) (string, error) {
 	}
 	return string(plaintext), nil
 }
+
+// crypt/crypt.go — добавь или замени эти функции (если у тебя ещё нет байтовых версий)
+func EncryptBytes(plaintext []byte, key []byte) ([]byte, error) {
+	if len(plaintext) == 0 {
+		return nil, nil
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	ciphertext := aesGCM.Seal(nonce, nonce, plaintext, nil)
+	return ciphertext, nil
+}
+
+func DecryptBytes(ciphertext []byte, key []byte) ([]byte, error) {
+	if len(ciphertext) == 0 {
+		return nil, nil
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := aesGCM.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
+}
+
+func DecryptString(ciphertextBase64 string, key []byte) (string, error) {
+	if ciphertextBase64 == "" {
+		return "", nil
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(ciphertextBase64)
+	if err != nil {
+		return "", err
+	}
+	plaintext, err := DecryptBytes(ciphertext, key)
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
+}

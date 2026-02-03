@@ -54,9 +54,9 @@ var (
 	targetTime  time.Duration
 	interval    time.Duration
 	cfg         *conf.AppConfig
-	cfg2        *conf.AppConfig
-	cloneBtn    *widget.Button
-	cancel      chan struct{}
+	//cfg2        *conf.AppConfig
+	cloneBtn *widget.Button
+	cancel   chan struct{}
 	//schedulerRunning bool
 	// ... другие виджеты, если нужноasIsCheck
 )
@@ -235,33 +235,34 @@ func RemoveGitFolder(dir string, output binding.String) error {
 	return nil
 }
 
-func saveConfig(cfg *conf.AppConfig, path string) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	return enc.Encode(cfg)
-}
-func LoadConfig(path string) (*conf.AppConfig, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	cfg := &conf.AppConfig{}
-	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
+//func saveConfig(cfg *conf.AppConfig, path string) error {
+//	f, err := os.Create(path)
+//	if err != nil {
+//		return err
+//	}
+//	defer f.Close()
+//	enc := json.NewEncoder(f)
+//	enc.SetIndent("", "  ")
+//	return enc.Encode(cfg)
+//}
+
+//func LoadConfig(path string) (*conf.AppConfig, error) {
+//	f, err := os.Open(path)
+//	if err != nil {
+//		return nil, err
+//	}
+//	defer f.Close()
+//	cfg := &conf.AppConfig{}
+//	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+//		return nil, err
+//	}
+//	return cfg, nil
+//}
 
 // восстановление боксов после переоткрытия
 func loadConfigFromFile() {
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadDoubleEncryptedConfig(configPath, crypt.SecretKey, crypt.SecretKey)
 	if err != nil {
 		return
 	}
@@ -498,7 +499,7 @@ func NotifyError(title, message string) {
 	//cmd.Run()
 }
 
-const configPath = "config.json"
+const configPath = "config.secure"
 
 func NextTime(cfg *conf.AppConfig) string {
 	if cfg == nil {
@@ -555,14 +556,6 @@ func NextTime(cfg *conf.AppConfig) string {
 
 	hours := int(delay.Hours())
 	minutes := int(delay.Minutes()) % 60
-
-	//println(
-	//	"Следующий запуск: %s в %s. (через %d ч. %d мин.)",
-	//	nextRun.Format("02.01.2006"),
-	//	nextRun.Format("15:04"),
-	//	hours,
-	//	minutes,
-	//)
 	return fmt.Sprintf("▶ Планировщик запущен.\n"+
 		"🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)",
 		nextRun.Format("02.01.2006"),
@@ -576,8 +569,8 @@ func main() {
 	//const configPath = "config.json"
 	//var cfg *conf.AppConfig
 	//var err error
-	cfg, err := LoadConfig(configPath)
-	cfg2, err := LoadDoubleEncryptedConfig("config.secure", crypt.SecretKey, crypt.SecretKey)
+	//cfg, err := LoadConfig(configPath)
+	cfg, err := LoadDoubleEncryptedConfig(configPath, crypt.SecretKey, crypt.SecretKey)
 	if err != nil {
 		// файла нет — просим пользователя ввести данные
 		cfg = &conf.AppConfig{}
@@ -726,6 +719,14 @@ func main() {
 
 			// Подставляем путь в поле (можно показать только configs или общий путь)
 			savePathEntry.SetText(chosenPath)
+			fyne.Do(func() {
+				//savePathEntry.Focus()
+				//savePathEntry.CursorPos = len(chosenPath)
+				//savePathEntry.Focus()
+				w.Canvas().Focus(savePathEntry)
+				savePathEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
+				savePathEntry.Refresh()
+			})
 
 			// ← Здесь сохрани путь в конфиг, если нужно
 			// cfg.SavePath = chosenPath
@@ -1093,7 +1094,7 @@ func main() {
 
 		cfg.ScheduleDays = days
 		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
-		if err := saveConfig(cfg, configPath); err != nil {
+		if err := SaveDoubleEncryptedConfig(cfg, configPath, crypt.SecretKey, crypt.SecretKey); err != nil {
 			appendOutput(outputText, fmt.Sprintf("❌ Ошибка сохранения: %v", err))
 		} else {
 			loginEntry.SetText("")
@@ -1116,8 +1117,8 @@ func main() {
 			//if !platformCheck.Checked {
 			//	cfg.NetboxToken = ""
 			//}
-			_ = saveConfig(cfg, configPath)
-			SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
+			//_ = saveConfig(cfg, configPath)
+			SaveDoubleEncryptedConfig(cfg, configPath, crypt.SecretKey, crypt.SecretKey)
 			//if fileExists(configPath) {
 			browseBtn.Disable()
 			//}
@@ -1149,7 +1150,7 @@ func main() {
 	resetConfig := func() {
 
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
-			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
+			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.secure: " + err.Error())
 			return
 		}
 		//loginEntry.SetEditable(true)
@@ -1369,6 +1370,7 @@ func main() {
 		fyne.Do(allBlock)
 		//allBlock()
 		if manualRun {
+			time.Sleep(500 * time.Millisecond)
 			appendOutput(outputText, "🔥 Начинаю загрузку из GitLab...\n")
 		} else {
 			appendOutput(outputText,
@@ -1481,7 +1483,7 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 					} else {
 						fyne.Do(func() {
-							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
+							appendOutput(outputText, "\n✅ Все операции для ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
@@ -1505,10 +1507,11 @@ func main() {
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
+						appendOutput(outputText, "\n⏳ Файлы ЦОД обработаны. Ждём файлы ЛВС.\n")
 					} else {
 						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 						fyne.Do(func() {
-							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
+							appendOutput(outputText, "\n✅ Все операции для ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 					}
@@ -1601,12 +1604,12 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 						fyne.Do(func() {
-							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
+							appendOutput(outputText, "\n✅ Все операции для ЛВС и ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 					} else {
 						//fyne.Do(func() {
-						appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+						appendOutput(outputText, "\n✅ Все операции для ЛВС выполнены!\n")
 						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						//})
 						//appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
@@ -1634,13 +1637,13 @@ func main() {
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 						fyne.Do(func() {
-							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
+							appendOutput(outputText, "\n✅ Все операции для ЛВС и ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
 						})
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 					} else {
 						//fyne.Do(func() {
-						appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+						appendOutput(outputText, "\n✅ Все операции для ЛВС выполнены!\n")
 						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
 						//})
 						//appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
@@ -1665,6 +1668,10 @@ func main() {
 	}
 
 	cloneBtn.OnTapped = func() {
+
+		if !fileExists(configPath) {
+			manualRun = true
+		}
 
 		if isAutoRun {
 			isAutoRun = false // сбрасываем

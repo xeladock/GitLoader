@@ -7,6 +7,7 @@ import (
 	//"time"
 
 	config "configtool.local/conf"
+	"configtool.local/crypt"
 	"configtool.local/scheduler"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -110,7 +111,8 @@ func CreateStartPauseButton(
 			cfg.LastRun,
 			func(newLastRun string) {
 				cfg.LastRun = newLastRun
-				_ = saveConfig(cfg, configPath)
+				//_ = saveConfig(cfg, configPath)
+				SaveDoubleEncryptedConfig(cfg, configPath, crypt.SecretKey, crypt.SecretKey)
 			},
 			func() {
 				fyne.Do(func() {
@@ -152,7 +154,8 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 	}
 	schedulerRunning = true
 	cfg.SchedulerState = "running"
-	_ = saveConfig(cfg, configPath)
+	//_ = saveConfig(cfg, configPath)
+	SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
 
 	schedulerCancel = make(chan struct{})
 	go scheduler.Start(
@@ -197,7 +200,8 @@ func stopScheduler(cfg *config.AppConfig, configPath string, output binding.Stri
 	close(schedulerCancel)
 	schedulerRunning = false
 	cfg.SchedulerState = "paused"
-	_ = saveConfig(cfg, configPath)
+	SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
+	//_ = saveConfig(cfg, configPath)
 	outputText.Set("")
 	updateHint()
 

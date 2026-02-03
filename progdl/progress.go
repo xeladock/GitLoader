@@ -13,12 +13,14 @@ import (
 	config "configtool.local/conf"
 	"configtool.local/platform"
 	"configtool.local/region"
+	"fyne.io/fyne/v2"
+
 	//"configtool.local/main"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 )
 
-const configPath = "config.json"
+//const configPath = "config.json"
 
 func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 	now := time.Now()
@@ -114,9 +116,9 @@ func RunProgressMode(
 		}
 	}
 
-	_ = appendOutput(
+	appendOutput(
 		output,
-		fmt.Sprintf("\n📣Файлы %s сохранены в папку: %s\n", folderName, dateStr),
+		fmt.Sprintf("📣Файлы %s сохранены в папку: %s\n", folderName, dateStr),
 	)
 	time.Sleep(500 * time.Millisecond)
 
@@ -152,6 +154,7 @@ func RunProgressMode(
 	//}
 
 	//_ = appendOutput(output, "Архивная копия сохранена успешно.")
+	//println(manualRun, "mn")
 	if manualRun == false {
 		nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
 		delay := time.Until(nextTime)
@@ -209,17 +212,24 @@ func fileExists(path string) bool {
 //	return nil
 //}
 
-func appendOutput(bindStr binding.String, msg string) error {
-	current, err := bindStr.Get()
-	if err != nil {
-		return fmt.Errorf("ошибка чтения binding.String: %w", err)
-	}
+//func appendOutput(bindStr binding.String, msg string) error {
+//	current, err := bindStr.Get()
+//	if err != nil {
+//		return fmt.Errorf("ошибка чтения binding.String: %w", err)
+//	}
+//
+//	if err := bindStr.Set(current + msg + "\n"); err != nil {
+//		return fmt.Errorf("ошибка записи binding.String: %w", err)
+//	}
+//
+//	return nil
+//}
 
-	if err := bindStr.Set(current + msg + "\n"); err != nil {
-		return fmt.Errorf("ошибка записи binding.String: %w", err)
-	}
-
-	return nil
+func appendOutput(output binding.String, msg string) {
+	fyne.Do(func() {
+		current, _ := output.Get()
+		_ = output.Set(current + msg)
+	})
 }
 
 func copyDir(src, dst string) error {
