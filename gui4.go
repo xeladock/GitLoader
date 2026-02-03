@@ -726,6 +726,14 @@ func main() {
 
 			// Подставляем путь в поле (можно показать только configs или общий путь)
 			savePathEntry.SetText(chosenPath)
+			fyne.Do(func() {
+				//savePathEntry.Focus()
+				//savePathEntry.CursorPos = len(chosenPath)
+				//savePathEntry.Focus()
+				w.Canvas().Focus(savePathEntry)
+				savePathEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
+				savePathEntry.Refresh()
+			})
 
 			// ← Здесь сохрани путь в конфиг, если нужно
 			// cfg.SavePath = chosenPath
@@ -1117,7 +1125,7 @@ func main() {
 			//	cfg.NetboxToken = ""
 			//}
 			_ = saveConfig(cfg, configPath)
-			SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
+			//SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
 			//if fileExists(configPath) {
 			browseBtn.Disable()
 			//}
