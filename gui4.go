@@ -54,6 +54,7 @@ var (
 	targetTime  time.Duration
 	interval    time.Duration
 	cfg         *conf.AppConfig
+	cfg2        *conf.AppConfig
 	cloneBtn    *widget.Button
 	cancel      chan struct{}
 	//schedulerRunning bool
@@ -83,6 +84,71 @@ var (
 //}
 
 // Вызов:
+func SaveDoubleEncryptedConfig(cfg *conf.AppConfig, path string, internalKey, externalKey []byte) error {
+	// 1. Шифруем чувствительные поля (внутренний слой)
+	encPass, err := crypt.Encrypt(cfg.GitLabPass, internalKey)
+	if err != nil {
+		return err
+	}
+	encToken, err := crypt.Encrypt(cfg.NetboxToken, internalKey)
+	if err != nil {
+		return err
+	}
+
+	// Создаём копию с зашифрованными полями
+	encCfg := *cfg
+	encCfg.GitLabPass = encPass
+	encCfg.NetboxToken = encToken
+
+	// 2. Сериализуем в JSON
+	jsonData, err := json.MarshalIndent(encCfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	// 3. Шифруем весь JSON (внешний слой)
+	encryptedAll, err := crypt.Encrypt(string(jsonData), externalKey)
+	if err != nil {
+		return err
+	}
+
+	// 4. Сохраняем
+	return os.WriteFile(path, []byte(encryptedAll), 0600)
+}
+
+func LoadDoubleEncryptedConfig(path string, internalKey, externalKey []byte) (*conf.AppConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. Расшифровываем внешний слой
+	jsonStr, err := crypt.Decrypt(string(data), externalKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Парсим JSON
+	cfg := &conf.AppConfig{}
+	if err := json.Unmarshal([]byte(jsonStr), cfg); err != nil {
+		return nil, err
+	}
+
+	// 3. Расшифровываем внутренние поля
+	decPass, err := crypt.Decrypt(cfg.GitLabPass, internalKey)
+	if err != nil {
+		return nil, err
+	}
+	decToken, err := crypt.Decrypt(cfg.NetboxToken, internalKey)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.GitLabPass = decPass
+	cfg.NetboxToken = decToken
+
+	return cfg, nil
+}
 
 func isValidTime(s string) bool {
 	if len(s) != 5 {
@@ -131,17 +197,24 @@ func fileExists(path string) bool {
 	return !info.IsDir() // существует и это файл
 }
 
-func appendOutput(bindStr binding.String, msg string) error {
-	current, err := bindStr.Get()
-	if err != nil {
-		return fmt.Errorf("ошибка чтения binding.String: %w", err)
-	}
+//func appendOutput(bindStr binding.String, msg string) error {
+//	current, err := bindStr.Get()
+//	if err != nil {
+//		return fmt.Errorf("ошибка чтения binding.String: %w", err)
+//	}
+//
+//	if err := bindStr.Set(current + msg + "\n"); err != nil {
+//		return fmt.Errorf("ошибка записи binding.String: %w", err)
+//	}
+//
+//	return nil
+//}
 
-	if err := bindStr.Set(current + msg + "\n"); err != nil {
-		return fmt.Errorf("ошибка записи binding.String: %w", err)
-	}
-
-	return nil
+func appendOutput(output binding.String, msg string) {
+	fyne.Do(func() {
+		current, _ := output.Get()
+		_ = output.Set(current + msg)
+	})
 }
 
 func RemoveGitFolder(dir string, output binding.String) error {
@@ -491,7 +564,7 @@ func NextTime(cfg *conf.AppConfig) string {
 	//	minutes,
 	//)
 	return fmt.Sprintf("▶ Планировщик запущен.\n"+
-		"🔄  Следующий запуск: %s в %s. (через %d ч. %d мин.)",
+		"🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)",
 		nextRun.Format("02.01.2006"),
 		nextRun.Format("15:04"),
 		hours,
@@ -504,6 +577,7 @@ func main() {
 	//var cfg *conf.AppConfig
 	//var err error
 	cfg, err := LoadConfig(configPath)
+	cfg2, err := LoadDoubleEncryptedConfig("config.secure", crypt.SecretKey, crypt.SecretKey)
 	if err != nil {
 		// файла нет — просим пользователя ввести данные
 		cfg = &conf.AppConfig{}
@@ -595,15 +669,15 @@ func main() {
 	// Поля ввода
 	//output := NewReadOnlyEntry()
 	//4444
-	//loginEntry := widget.NewEntry()
-	loginEntry := NewReadOnlyEntry2()
-	println("login unlock at the begin")
+	loginEntry := widget.NewEntry()
+	//loginEntry := NewReadOnlyEntry2()
+	//println("login unlock at the begin")
 
-	if fileExists(configPath) {
-		loginEntry.SetEditable(false)
-	} else {
-		loginEntry.SetEditable(true)
-	}
+	//if fileExists(configPath) {
+	//	loginEntry.SetEditable(false)
+	//} else {
+	//	loginEntry.SetEditable(true)
+	//}
 
 	loginEntry.SetPlaceHolder("Введите логин GitLab")
 	loginEntry.TextStyle = fyne.TextStyle{}
@@ -911,7 +985,6 @@ func main() {
 	setConfig := func() {
 		encryptedPass, err := crypt.Encrypt(passEntry.Text, crypt.SecretKey)
 		if err != nil {
-			println(err.Error(), "ошибка")
 		}
 
 		encryptedToken, err := crypt.Encrypt(netboxEntry.Text, crypt.SecretKey)
@@ -1044,6 +1117,7 @@ func main() {
 			//	cfg.NetboxToken = ""
 			//}
 			_ = saveConfig(cfg, configPath)
+			SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
 			//if fileExists(configPath) {
 			browseBtn.Disable()
 			//}
@@ -1078,7 +1152,7 @@ func main() {
 			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
 			return
 		}
-		loginEntry.SetEditable(true)
+		//loginEntry.SetEditable(true)
 		println("login editable in reset")
 		saveBtn.SetText("Сохранить")
 
@@ -1182,14 +1256,14 @@ func main() {
 		if saveBtn.Text == "Сбросить" {
 			loginEntry.SetText("")
 			loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
-			time.Sleep(32 * time.Millisecond) // ≈ 1 кадр при 60 fps
-			loginEntry.SetEditable(false)
-			loginEntry.FocusLost()
-			w.Canvas().Focus(nil)
+			//time.Sleep(32 * time.Millisecond) // ≈ 1 кадр при 60 fps
+			//loginEntry.SetEditable(false)
+			//loginEntry.FocusLost()
+			//w.Canvas().Focus(nil)
 
 			//loginEntry.FocusLost()
 			//fyne.CurrentApp().Driver().CanvasForObject(loginEntry).Focus(nil)
-			println("login not editable in set")
+			//println("login not editable in set")
 			//ReadOnlyEntry2(loginEntry)
 			//5555
 		}
@@ -1294,7 +1368,16 @@ func main() {
 		// ... проверки логина/пароля ...
 		fyne.Do(allBlock)
 		//allBlock()
-		_ = appendOutput(outputText, "🔥 Начинаю загрузку из GitLab...\n")
+		if manualRun {
+			appendOutput(outputText, "🔥 Начинаю загрузку из GitLab...\n")
+		} else {
+			appendOutput(outputText,
+				fmt.Sprintf("🚨 Выполняю загрузку по расписанию: %s в %s\n",
+					time.Now().Format("02.01.2006"),
+					time.Now().Format("15:04"),
+				),
+			)
+		}
 
 		login := strings.TrimSpace(loginEntry.Text)
 		pass := strings.TrimSpace(passEntry.Text)
@@ -1305,11 +1388,9 @@ func main() {
 		//println(path)
 		decryptedPass, err := crypt.Decrypt(cfg.GitLabPass, crypt.SecretKey)
 		if err != nil {
-			println(err.Error(), "decryptedPass")
 		}
 		decryptedToken, err := crypt.Decrypt(cfg.NetboxToken, crypt.SecretKey)
 		if err != nil {
-			println(err.Error(), "decryptedToken")
 		}
 
 		if login == "" && cfg.GitLabLogin != "" {
@@ -1355,25 +1436,25 @@ func main() {
 
 				switch {
 				case strings.Contains(string(outputBytes), "Authentication failed"):
-					_ = appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
+					appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
 
 				case strings.Contains(string(outputBytes), "not found"):
-					_ = appendOutput(outputText, "Ошибка: git не найден в PATH\n")
+					appendOutput(outputText, "Ошибка: git не найден в PATH\n")
 
 				case strings.Contains(string(outputBytes), "Could not resolve host"):
-					_ = appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
+					appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
 
 				case strings.Contains(string(outputBytes), "Repository not found"):
-					_ = appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
+					appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
 
 				case err != nil && (os.IsPermission(err) ||
 					strings.Contains(strings.ToLower(err.Error()), "permission denied") ||
 					strings.Contains(strings.ToLower(err.Error()), "access denied") ||
 					strings.Contains(strings.ToLower(err.Error()), "read-only file system")):
-					_ = appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
+					appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
 
 				default:
-					_ = appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
+					appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
 				}
 				fyne.Do(allUnblock)
 
@@ -1387,47 +1468,47 @@ func main() {
 			isProgressMode := progressCheck.Checked
 
 			if isProgressMode {
-				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
+				//appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll, manualRun); err != nil {
-					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
-						_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 						NotifyError("Oй!", "Что-то пошло нет так!")
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 					} else {
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
+							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
-						//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 					}
 				}
 			} else {
 				sdDst := filepath.Join(path, sortedDst, "ЦОД")
 				//println(dstDir, "-dstdir в gui4", sdDst, "-sdDst в gui4")
 				if err := os.MkdirAll(sdDst, 0755); err != nil {
-					//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
+					//appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
 					//continue
 				}
-				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
+				//appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(dstDir, sdDst,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
-					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
-						_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 						NotifyError("Oй!", "Что-то пошло не так!")
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 					} else {
-						//_ = appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
+						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
+							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 					}
@@ -1474,25 +1555,25 @@ func main() {
 
 				switch {
 				case strings.Contains(string(outputBytes), "Authentication failed"):
-					_ = appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
+					appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
 
 				case strings.Contains(string(outputBytes), "not found"):
-					_ = appendOutput(outputText, "Ошибка: git не найден в PATH\n")
+					appendOutput(outputText, "Ошибка: git не найден в PATH\n")
 
 				case strings.Contains(string(outputBytes), "Could not resolve host"):
-					_ = appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
+					appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
 
 				case strings.Contains(string(outputBytes), "Repository not found"):
-					_ = appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
+					appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
 
 				case err != nil && (os.IsPermission(err) ||
 					strings.Contains(strings.ToLower(err.Error()), "permission denied") ||
 					strings.Contains(strings.ToLower(err.Error()), "access denied") ||
 					strings.Contains(strings.ToLower(err.Error()), "read-only file system")):
-					_ = appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
+					appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
 
 				default:
-					_ = appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
+					appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
 				}
 				//_ = RemoveGitFolder(dstDir, outputText)
 				fyne.Do(allUnblock)
@@ -1507,28 +1588,28 @@ func main() {
 			isProgressMode := progressCheck.Checked
 
 			if isProgressMode {
-				//_ = appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
+				//appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll, manualRun); err != nil {
-					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
-						_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 						NotifyError("Oй!", "Что-то пошло нет так!")
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
-						//_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
+						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
+							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 					} else {
 						//fyne.Do(func() {
-						_ = appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+						appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
 						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						//})
-						//_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+						//appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 
 					}
 				}
@@ -1538,31 +1619,31 @@ func main() {
 
 				//println(dstDir, "-dstdir в gui4", sdDst, "-sdDst в gui4")
 				if err := os.MkdirAll(sdDst, 0755); err != nil {
-					//_ = appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
+					//appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
 					//continue
 				}
-				//_ = appendOutput(outputText, "Режим: Обновление текущих файлов\n")
+				//appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(dstDir, sdDst,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
 					token, outputText, scroll); err != nil {
 					//fyne.Do(func() {
-					_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					NotifyError("Oй!", "Что-то пошло нет так!")
 					//})
-					//_ = appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 						fyne.Do(func() {
-							_ = appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
+							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
 						})
-						//_ = appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
+						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 					} else {
 						//fyne.Do(func() {
-						_ = appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+						appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
 						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
 						//})
-						//_ = appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
+						//appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 					}
 				}
 			}
@@ -1587,7 +1668,7 @@ func main() {
 
 		if isAutoRun {
 			isAutoRun = false // сбрасываем
-			startDownload()
+			go startDownload()
 			return
 		}
 
@@ -1599,7 +1680,7 @@ func main() {
 				func(confirmed bool) {
 					if confirmed {
 						//clearLogKeepHeader(outputText, &output.Entry)
-						_ = appendOutput(outputText, "Запуск по запросу пользователя.\n")
+						appendOutput(outputText, "🟢 Запуск по запросу пользователя.\n")
 						manualRun = true
 						go func() {
 							startDownload()

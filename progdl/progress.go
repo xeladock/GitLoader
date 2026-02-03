@@ -116,9 +116,9 @@ func RunProgressMode(
 
 	_ = appendOutput(
 		output,
-		fmt.Sprintf("📣Файлы %s сохранены в папку: %s\n", folderName, dateStr),
+		fmt.Sprintf("\n📣Файлы %s сохранены в папку: %s\n", folderName, dateStr),
 	)
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// === Сохранение в папку с датой ===
 	//dateStr := time.Now().Format("02-01-06") // 27-11-25
@@ -158,7 +158,7 @@ func RunProgressMode(
 		hours := int(delay.Hours())
 		minutes := int(delay.Minutes()) - hours*60
 
-		appendOutput(output, fmt.Sprintf("Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+		appendOutput(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
 			nextTime.Format("02.01.2006"),
 			nextTime.Format("15:04"),
 			hours, minutes))

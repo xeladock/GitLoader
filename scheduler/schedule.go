@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"fyne.io/fyne/v2"
 	//"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	//"fyne.io/fyne/v2/widget"
@@ -128,13 +127,20 @@ func ScheduleNext(
 			return
 		default:
 		}
+		//fyne.Do(func() {
+		//	appendLog(output,
+		//		fmt.Sprintf("🚨 Выполняю загрузку по расписанию: %s в %s\n",
+		//			time.Now().Format("02.01.2006"),
+		//			time.Now().Format("15:04"),
+		//		),
+		//	)
+		//})
+		//time.Sleep(2 * time.Second)
+		NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
 
-		fyne.Do(func() {
-			appendLog(output, fmt.Sprintf("🚨 Выполняю загрузку по расписанию: %s в %s\n", now.Format("02.01.2006"), now.Format("15:04")))
-			NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
-			time.Sleep(1000 * time.Millisecond)
+		go func() {
 			cloneAction()
-		})
+		}()
 
 		newLastRun := time.Now().Format(time.RFC3339)
 		onUpdateLastRun(newLastRun)
