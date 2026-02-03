@@ -577,7 +577,7 @@ func main() {
 	//var cfg *conf.AppConfig
 	//var err error
 	cfg, err := LoadConfig(configPath)
-	cfg2, err := LoadDoubleEncryptedConfig("config.secure", crypt.SecretKey, crypt.SecretKey)
+	//cfg2, err := LoadDoubleEncryptedConfig("config.secure", crypt.SecretKey, crypt.SecretKey)
 	if err != nil {
 		// файла нет — просим пользователя ввести данные
 		cfg = &conf.AppConfig{}
@@ -1369,6 +1369,7 @@ func main() {
 		fyne.Do(allBlock)
 		//allBlock()
 		if manualRun {
+			time.Sleep(500 * time.Millisecond)
 			appendOutput(outputText, "🔥 Начинаю загрузку из GitLab...\n")
 		} else {
 			appendOutput(outputText,
@@ -1479,6 +1480,7 @@ func main() {
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
+						appendOutput(outputText, "⏳ Файлы ЦОД обработаны. Ожидаем файлы ЛВС.\n")
 					} else {
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
@@ -1665,6 +1667,10 @@ func main() {
 	}
 
 	cloneBtn.OnTapped = func() {
+
+		if !fileExists(configPath) {
+			manualRun = true
+		}
 
 		if isAutoRun {
 			isAutoRun = false // сбрасываем

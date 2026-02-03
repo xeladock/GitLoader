@@ -13,6 +13,8 @@ import (
 	config "configtool.local/conf"
 	"configtool.local/platform"
 	"configtool.local/region"
+	"fyne.io/fyne/v2"
+
 	//"configtool.local/main"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
@@ -114,9 +116,9 @@ func RunProgressMode(
 		}
 	}
 
-	_ = appendOutput(
+	appendOutput(
 		output,
-		fmt.Sprintf("\n📣Файлы %s сохранены в папку: %s\n", folderName, dateStr),
+		fmt.Sprintf("\n📣Файлы %s сохранены в папку:  %s\n", folderName, dateStr),
 	)
 	time.Sleep(500 * time.Millisecond)
 
@@ -185,42 +187,48 @@ func fileExists(path string) bool {
 //	nextRun.Format("15:04"),
 //	hours, minutes))
 
-//func RemoveGitFolder(dir string, output binding.String) error {
-//	gitPath := filepath.Join(dir, ".git")
+//	func RemoveGitFolder(dir string, output binding.String) error {
+//		gitPath := filepath.Join(dir, ".git")
 //
-//	// Проверяем, существует ли .git
-//	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
-//		//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
+//		// Проверяем, существует ли .git
+//		if _, err := os.Stat(gitPath); os.IsNotExist(err) {
+//			//appendOutput(output, "Папка .git не найдена (уже удалена или clone прошёл без неё).\n")
+//			return nil
+//		}
+//
+//		err := os.Chmod(gitPath, 0777)
+//		if err != nil {
+//			return err
+//		}
+//
+//		// Удаляем полностью
+//		if err := os.RemoveAll(gitPath); err != nil {
+//			appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
+//			return err
+//		}
+//
+//		//appendOutput(output, "Папка .git удалена.\n")
 //		return nil
 //	}
-//
-//	err := os.Chmod(gitPath, 0777)
+func appendOutput(output binding.String, msg string) {
+	fyne.Do(func() {
+		current, _ := output.Get()
+		_ = output.Set(current + msg)
+	})
+}
+
+//func appendOutput(bindStr binding.String, msg string) error {
+//	current, err := bindStr.Get()
 //	if err != nil {
-//		return err
+//		return fmt.Errorf("ошибка чтения binding.String: %w", err)
 //	}
 //
-//	// Удаляем полностью
-//	if err := os.RemoveAll(gitPath); err != nil {
-//		appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
-//		return err
+//	if err := bindStr.Set(current + msg + "\n"); err != nil {
+//		return fmt.Errorf("ошибка записи binding.String: %w", err)
 //	}
 //
-//	//appendOutput(output, "Папка .git удалена.\n")
 //	return nil
 //}
-
-func appendOutput(bindStr binding.String, msg string) error {
-	current, err := bindStr.Get()
-	if err != nil {
-		return fmt.Errorf("ошибка чтения binding.String: %w", err)
-	}
-
-	if err := bindStr.Set(current + msg + "\n"); err != nil {
-		return fmt.Errorf("ошибка записи binding.String: %w", err)
-	}
-
-	return nil
-}
 
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
