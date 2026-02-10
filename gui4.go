@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/sha256"
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -12,11 +10,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	conf "configtool.local/conf"
 	"configtool.local/crypt"
 	"configtool.local/progdl"
+	"configtool.local/sound"
 	"fyne.io/fyne/v2/theme"
 	//"configtool.local/start_stop"
 	// "configtool.local/window_action" // removed, using systray instead
@@ -48,6 +48,8 @@ var (
 
 	dcCheck     *widget.Check
 	lanCheck    *widget.Check
+	aclCheck    *widget.Check
+	parserCheck *widget.Check
 	scroll      *container.Scroll
 	outputText  binding.String
 	nextRunTime time.Time
@@ -60,39 +62,6 @@ var (
 	//schedulerRunning bool
 	// ... другие виджеты, если нужноasIsCheck
 )
-
-func scroollOutput(output binding.String, scroll *container.Scroll, msg string) {
-	fyne.Do(func() {
-		current, _ := output.Get()
-		_ = output.Set(current + msg)
-	})
-	fyne.Do(func() {
-		scroll.ScrollToBottom()
-		//scroll.Refresh()
-	})
-}
-
-//var skipManualDialog = false
-//
-//func clearLogKeepHeader(textBinding binding.String, entry *widget.Entry) {
-//	current, _ := textBinding.Get()
-//	lines := strings.Split(current, "\n")
-//	for len(lines) > 0 && lines[len(lines)-1] == "" {
-//		lines = lines[:len(lines)-1]
-//	}
-//
-//	// Оставляем ТОЛЬКО последние 2 строки (заголовок)
-//	if len(lines) > 2 {
-//		header := strings.Join(lines[len(lines)-2:], "\n") + "\n\n"
-//		textBinding.Set(header)
-//	} else if len(lines) > 0 {
-//		// Если меньше 2 строк — оставляем как есть, но с переносами
-//		textBinding.Set(strings.Join(lines, "\n") + "\n\n")
-//	}
-//
-//	// ← ПРОСТО ВЫЗЫВАЕМ Refresh() — без type assertion!
-//	entry.Refresh()
-//}
 
 // Вызов:
 func SaveDoubleEncryptedConfig(cfg *conf.AppConfig, path string, internalKey, externalKey []byte) error {
@@ -175,8 +144,8 @@ func isValidTime(s string) bool {
 	return errH == nil && errM == nil && h >= 0 && h <= 23 && m >= 0 && m <= 59
 }
 
-func checkModeSelected(asIsCheck, platformCheck, regionCheck *widget.Check, w fyne.Window) bool {
-	if !asIsCheck.Checked && !platformCheck.Checked && !regionCheck.Checked {
+func checkModeSelected(asIsCheck, platformCheck, regionCheck, aclCheck *widget.Check, w fyne.Window) bool {
+	if !asIsCheck.Checked && !platformCheck.Checked && !regionCheck.Checked && !aclCheck.Checked {
 		dialog.ShowInformation("Ой!", "⚠️ Выберите режим сортировки.", w)
 		return false
 	}
@@ -283,10 +252,14 @@ func loadConfigFromFile() {
 		platformCheck.SetChecked(true)
 	case "region":
 		regionCheck.SetChecked(true)
+	case "ACL":
+		aclCheck.SetChecked(true)
 	default:
 		asIsCheck.SetChecked(false)
 		platformCheck.SetChecked(false)
 		regionCheck.SetChecked(false)
+		aclCheck.SetChecked(false)
+
 	}
 
 	switch cfg.SaveMode {
@@ -318,25 +291,26 @@ func loadConfigFromFile() {
 
 // для остановки
 
-//type AppConfig struct {
-//	GitLabLogin    string `json:"gitlab_login"`
-//	GitLabPass     string `json:"gitlab_pass_hash"`
-//	NetboxToken    string `json:"netbox_token_hash"`
-//	Mode           string `json:"mode"` // as-is / platform / region
-//	SaveMode       string `json:"save_mode"`
-//	ScheduleDays   int    `json:"schedule_days"`
-//	ScheduleTime   string `json:"schedule_time"` // "HH:MM"
-//	LastRun        string `json:"last_run,omitempty"`
-//	SchedulerState string `json:"scheduler_state"`
-//}
-
+//	type AppConfig struct {
+//		GitLabLogin    string `json:"gitlab_login"`
+//		GitLabPass     string `json:"gitlab_pass_hash"`
+//		NetboxToken    string `json:"netbox_token_hash"`
+//		Mode           string `json:"mode"` // as-is / platform / region
+//		SaveMode       string `json:"save_mode"`
+//		ScheduleDays   int    `json:"schedule_days"`
+//		ScheduleTime   string `json:"schedule_time"` // "HH:MM"
+//		LastRun        string `json:"last_run,omitempty"`
+//		SchedulerState string `json:"scheduler_state"`
+//	}
+//
+// uh
 func updateHint() {
 	var lines []string
 	//outputText := binding.NewString()
 
 	// --- Сортировка ---
 	if asIsCheck.Checked {
-		lines = append(lines, "🔎Сортировка: как есть (без изменений).")
+		lines = append(lines, "🔎Сортировка: Как есть (без изменений).")
 		//netboxEntry.Disable()
 		//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
 	} else if platformCheck.Checked {
@@ -345,15 +319,20 @@ func updateHint() {
 		lines = append(lines, "🔎Сортировка: по платформам.")
 	} else if regionCheck.Checked {
 		lines = append(lines, "🔎Сортировка: по регионам.")
-		//netboxEntry.Disable()
-		//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
+		//} else if aclCheck.Checked {
+		//	lines = append(lines, "🔎Сортировка: Access-lists.")
+	} else if aclCheck.Checked && parserCheck.Checked {
+		lines = append(lines, "🔎Сортировка: Access-lists + Загрузка парсера.")
+		// Текст про Парсер появляется ТОЛЬКО если галочка включена
+	} else if aclCheck.Checked {
+		lines = append(lines, "🔎Сортировка: Access-lists.")
 	}
 
 	// --- Режим сохранения ---
 	if updateCheck.Checked {
-		lines = append(lines, "📂Режим: Обновление текущих файлов (перезапись)")
+		lines = append(lines, "📂Режим: Обновление текущих файлов (перезапись файлов).")
 	} else if progressCheck.Checked {
-		lines = append(lines, "📂Режим: Сохранение истории (архив по дням)")
+		lines = append(lines, "📂Режим: Сохранение истории (архив по дням).")
 	}
 
 	if dcCheck.Checked && lanCheck.Checked {
@@ -396,10 +375,10 @@ func (e *ReadOnlyEntry) Refresh() {
 	e.Entry.Refresh()
 }
 
-func hashString(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:])
-}
+//func hashString(s string) string {
+//	h := sha256.Sum256([]byte(s))
+//	return hex.EncodeToString(h[:])
+//}
 
 // 2
 // ❗ Полностью блокируем ввод с клавиатуры
@@ -415,64 +394,64 @@ func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
 //}
 
 // 2
-type ReadOnlyEntry2 struct {
-	widget.Entry
-	editable bool
-}
-
-func NewReadOnlyEntry2() *ReadOnlyEntry2 {
-	e := &ReadOnlyEntry2{}
-	e.ExtendBaseWidget(e)
-	e.editable = false // по умолчанию заблокировано
-	return e
-}
-
-func (e *ReadOnlyEntry2) Focusable() bool {
-	return e.editable
-}
-
-func (e *ReadOnlyEntry2) Tapped(*fyne.PointEvent) {
-	if !e.editable {
-		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
-			c.Focus(nil)
-		}
-		return
-	}
-	e.Entry.Tapped(nil)
-}
-
-func (e *ReadOnlyEntry2) FocusGained() {
-	if !e.editable {
-		// Снимаем фокус мгновенно
-		fyne.CurrentApp().Driver().CanvasForObject(e).Focus(nil)
-		return
-	}
-	e.Entry.FocusGained()
-}
-
-func (e *ReadOnlyEntry2) TypedRune(r rune) {
-	if e.editable {
-		e.Entry.TypedRune(r)
-	}
-}
-
-func (e *ReadOnlyEntry2) TypedKey(ev *fyne.KeyEvent) {
-	if e.editable {
-		e.Entry.TypedKey(ev)
-	}
-}
-
-func (e *ReadOnlyEntry2) SetEditable(editable bool) {
-	e.editable = editable
-	e.Refresh()
-
-	// Если отключили редактирование — сразу снимаем фокус
-	if !editable {
-		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
-			c.Focus(nil)
-		}
-	}
-}
+//type ReadOnlyEntry2 struct {
+//	widget.Entry
+//	editable bool
+//}
+//
+//func NewReadOnlyEntry2() *ReadOnlyEntry2 {
+//	e := &ReadOnlyEntry2{}
+//	e.ExtendBaseWidget(e)
+//	e.editable = false // по умолчанию заблокировано
+//	return e
+//}
+//
+//func (e *ReadOnlyEntry2) Focusable() bool {
+//	return e.editable
+//}
+//
+//func (e *ReadOnlyEntry2) Tapped(*fyne.PointEvent) {
+//	if !e.editable {
+//		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
+//			c.Focus(nil)
+//		}
+//		return
+//	}
+//	e.Entry.Tapped(nil)
+//}
+//
+//func (e *ReadOnlyEntry2) FocusGained() {
+//	if !e.editable {
+//		// Снимаем фокус мгновенно
+//		fyne.CurrentApp().Driver().CanvasForObject(e).Focus(nil)
+//		return
+//	}
+//	e.Entry.FocusGained()
+//}
+//
+//func (e *ReadOnlyEntry2) TypedRune(r rune) {
+//	if e.editable {
+//		e.Entry.TypedRune(r)
+//	}
+//}
+//
+//func (e *ReadOnlyEntry2) TypedKey(ev *fyne.KeyEvent) {
+//	if e.editable {
+//		e.Entry.TypedKey(ev)
+//	}
+//}
+//
+//func (e *ReadOnlyEntry2) SetEditable(editable bool) {
+//	e.editable = editable
+//	e.Refresh()
+//
+//	// Если отключили редактирование — сразу снимаем фокус
+//	if !editable {
+//		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
+//			c.Focus(nil)
+//		}
+//	}
+//}
 
 // Метод переключения режима
 //func (e *ReadOnlyEntry2) SetEditable(editable bool) {
@@ -499,13 +478,15 @@ func (hiddenTheme) ScrollBarSize() int { return 0 }
 
 func NotifySuccess(title, message string) {
 	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message).Run()
-	exec.Command("paplay", "./icon/yes.mp3").Run()
+	sound.PlayYes()
+	//exec.Command("paplay", "./icon/yes.mp3").Run()
 	//cmd.Run() // ошибки молча игнорируем
 }
 
 func NotifyError(title, message string) {
 	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message).Run()
-	exec.Command("paplay", "./icon/no.mp3").Run()
+	sound.PlayNo()
+	//exec.Command("paplay", "./icon/no.mp3").Run()
 	//cmd.Run()
 }
 
@@ -515,7 +496,7 @@ func NextTime(cfg *conf.AppConfig) string {
 	if cfg == nil {
 		return "Конфигурация не загружена"
 	}
-	println("12345")
+	//println("12345")
 	if cfg.ScheduleDays <= 0 || cfg.ScheduleTime == "" {
 		return "Планировщик не настроен"
 	}
@@ -583,6 +564,34 @@ func NextTime(cfg *conf.AppConfig) string {
 	)
 }
 
+//const lockFileName = "gittornado.lock"
+
+//	func isProcessRunning(pid int) bool {
+//		p, err := os.FindProcess(pid)
+//		if err != nil {
+//			return false
+//		}
+//		// Нулевой сигнал — проверка существования процесса
+//		err = p.Signal(syscall.Signal(0))
+//		return err == nil
+//	}
+func isProcessRunning(pid int) bool {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = p.Signal(syscall.Signal(0))
+	return err == nil
+}
+
+func killProcess(pid int) error {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return p.Signal(syscall.SIGTERM) // мягкое завершение
+}
+
 func main() {
 	//const configPath = "config.json"
 	//var cfg *conf.AppConfig
@@ -596,8 +605,100 @@ func main() {
 	//cancel = make(chan struct{})
 	targetDir := "./configs" // куда клонируем репо
 	sortedDst := "./config_files_clear"
+	lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
 
-	a := app.NewWithID("rt_gitloader")
+	oldContent, _ := os.ReadFile(lockPath)
+	lines := strings.Split(strings.TrimSpace(string(oldContent)), "\n")
+
+	var oldPID int
+	isBusy := false
+
+	if len(lines) >= 1 {
+		if lines[0] == "BUSY" {
+			isBusy = true
+			if len(lines) >= 2 {
+				oldPID, _ = strconv.Atoi(lines[1])
+			}
+		} else {
+			oldPID, _ = strconv.Atoi(lines[0])
+		}
+	}
+
+	// Если BUSY → блокируем запуск
+	if isBusy && oldPID > 0 && isProcessRunning(oldPID) {
+		exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "3000", "Oй!", "Программа уже запущена!").Run()
+		sound.PlayBan()
+		//fmt.Println("Программа сейчас выполняет длительную операцию (загрузка/сортировка)")
+		//fmt.Println("Запуск новой копии заблокирован. Подождите завершения.")
+		os.Exit(1)
+	}
+
+	// Если нет BUSY, но процесс жив → убиваем старый
+	if oldPID > 0 && isProcessRunning(oldPID) {
+		//fmt.Printf("Завершаем старый экземпляр (PID %d)\n", oldPID)
+		exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "2000", "Oй!", "Рестарт процесса!").Run()
+		killProcess(oldPID)
+		time.Sleep(1500 * time.Millisecond)
+		os.Remove(lockPath)
+	}
+
+	// Создаём новый lock
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0600)
+	if err != nil {
+		fmt.Println("Ошибка создания lock:", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(f, "%d\n", os.Getpid())
+	syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+
+	defer func() {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+		os.Remove(lockPath)
+	}()
+	//lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
+	//
+	//f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0666)
+	//if err != nil {
+	//	fmt.Println("Ошибка открытия lock-файла:", err)
+	//	os.Exit(1)
+	//}
+	//
+	//// Пытаемся заблокировать
+	//if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	//	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "3000", "Oй!", "Программа уже запущена!").Run()
+	//	sound.PlayBan()
+	//	//fmt.Println("Программа уже запущена")
+	//	f.Close()
+	//	oldPIDBytes, _ := os.ReadFile(lockPath)
+	//	oldPID, _ := strconv.Atoi(strings.TrimSpace(string(oldPIDBytes)))
+	//
+	//	// Если PID есть и процесс жив — блокируем запуск
+	//	if oldPID > 0 && isProcessRunning(oldPID) {
+	//		fmt.Println("Программа уже запущена (PID:", oldPID, ")")
+	//		if err := killProcess(oldPID); err != nil {
+	//			fmt.Println("Не удалось завершить старый процесс:", err)
+	//		}
+	//		//os.Exit(1)
+	//	}
+	//	//os.Exit(1)
+	//}
+	//
+	//// Записываем PID
+	//f.Seek(0, 0)
+	//f.Truncate(0)
+	//fmt.Fprintf(f, "%d\n", os.Getpid())
+	//
+	//defer func() {
+	//	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	//	f.Close()
+	//	os.Remove(lockPath)
+	//
+	//}()
+
+	//fmt.Println("Программа запущена успешно (PID:", os.Getpid(), ")")
+	a := app.NewWithID("gittornado")
 	a.Settings().SetTheme(theme.LightTheme())
 	//a.Settings().SetTheme(hiddenTheme{})
 	// Set Fyne app icon as well (optional)
@@ -612,6 +713,9 @@ func main() {
 	w.SetCloseIntercept(func() {
 		w.Hide()
 	})
+
+	// Читаем старый PID (если файл уже был)
+	// или w.ShowAndRun()
 
 	// === SYSTRAY (getlantern) ===
 	go func() {
@@ -637,7 +741,7 @@ func main() {
 						if fileExists(configPath) && cfg.SchedulerState == "running" {
 							appendOutput(outputText, NextTime(cfg))
 						} else if fileExists(configPath) && cfg.SchedulerState == "paused" {
-							appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик на ПАУЗЕ. Нажмите «Старт» для возобновления.")
+							appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик не включен. Нажмите «Старт» для возобновления.")
 						} else if fileExists(configPath) && cfg.SchedulerState == "" {
 							appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
 						}
@@ -682,13 +786,6 @@ func main() {
 	//4444
 	loginEntry := widget.NewEntry()
 	//loginEntry := NewReadOnlyEntry2()
-	//println("login unlock at the begin")
-
-	//if fileExists(configPath) {
-	//	loginEntry.SetEditable(false)
-	//} else {
-	//	loginEntry.SetEditable(true)
-	//}
 
 	loginEntry.SetPlaceHolder("Введите логин GitLab")
 	loginEntry.TextStyle = fyne.TextStyle{}
@@ -721,21 +818,6 @@ func main() {
 
 			// Получаем путь к выбранной папке
 			chosenPath := uri.Path()
-
-			// Можно сразу создать подпапки configs и config_files_clear
-			//configsPath := filepath.Join(chosenPath, "configs")
-			//clearPath := filepath.Join(chosenPath, "config_files_clear")
-
-			//if err := os.MkdirAll(configsPath, 0755); err != nil {
-			//	dialog.ShowError(fmt.Errorf("не удалось создать configs: %w", err), w)
-			//	return
-			//}
-			//if err := os.MkdirAll(clearPath, 0755); err != nil {
-			//	dialog.ShowError(fmt.Errorf("не удалось создать config_files_clear: %w", err), w)
-			//	return
-			//}
-
-			// Подставляем путь в поле (можно показать только configs или общий путь)
 			savePathEntry.SetText(chosenPath)
 			fyne.Do(func() {
 				//savePathEntry.Focus()
@@ -797,29 +879,29 @@ func main() {
 	scroll.Refresh()
 
 	w.CenterOnScreen()
+	//asIsCheck := widget.NewCheck("Как есть (без изменений)", func(b bool) {
+	//	cfg.Mode = "as-is"
+	//	_ = saveConfig(cfg, configPath)
+	//})
 	asIsCheck = widget.NewCheck("Как есть", nil)
 	platformCheck = widget.NewCheck("Платформа", nil)
-	regionCheck = widget.NewCheck("Регион          ", nil)
-
+	regionCheck = widget.NewCheck("Регион", nil)
+	aclCheck = widget.NewCheck("ACL", nil)
+	parserCheck = widget.NewCheck("+Parser", nil)
 	updateCheck = widget.NewCheck("Обновление", nil)
 	progressCheck = widget.NewCheck("Прогресс", nil)
-
+	parserCheck = widget.NewCheck("+Parser", nil)
 	dcCheck = widget.NewCheck("ЦОД", nil)
-	lanCheck = widget.NewCheck("ЛВС", nil)
-
-	//testBtn := widget.NewButton("Тест уведомления", func() {
-	//	NotifySuccess("Тест", "Это уведомление от beeep!")
-	//})
-	//
-	//testBtn.OnTapped = func() {
-	//	NotifySuccess("Тест", "Это уведомление от beeep!")
-	//}
+	lanCheck = widget.NewCheck("ЛВС  ", nil)
 
 	// === ОБРАБОТЧИКИ СОРТИРОВКИ ===
 	asIsCheck.OnChanged = func(checked bool) {
 		if checked {
 			platformCheck.SetChecked(false)
 			regionCheck.SetChecked(false)
+			aclCheck.SetChecked(false)
+			parserCheck.SetChecked(false)
+			parserCheck.Disable()
 		}
 		updateHint()
 	}
@@ -828,11 +910,9 @@ func main() {
 		if checked {
 			asIsCheck.SetChecked(false) // ← было platformCheck!
 			regionCheck.SetChecked(false)
-			//} else {
-			//	///d2
-			//	//netboxEntry.SetPlaceHolder("Введите API NetBox Token")
-			//	//netboxEntry.SetText("")
-			//	netboxEntry.Disable()
+			aclCheck.SetChecked(false)
+			parserCheck.SetChecked(false)
+			parserCheck.Disable()
 
 		}
 		updateHint()
@@ -841,8 +921,31 @@ func main() {
 	regionCheck.OnChanged = func(checked bool) {
 		if checked {
 			asIsCheck.SetChecked(false)
-			platformCheck.SetChecked(false) // ← было platformCheck!
+			platformCheck.SetChecked(false)
+			aclCheck.SetChecked(false)
+			parserCheck.SetChecked(false)
+			parserCheck.Disable()
 		}
+		updateHint()
+	}
+	//ac
+	aclCheck.OnChanged = func(checked bool) {
+		if checked {
+			asIsCheck.SetChecked(false)
+			platformCheck.SetChecked(false)
+			regionCheck.SetChecked(false)
+			parserCheck.Enable()
+			//parserCheck.SetChecked(false)
+			//updateHint() // ← было platformCheck!
+		} else {
+			parserCheck.SetChecked(false)
+			parserCheck.Disable()
+
+		}
+		updateHint()
+	}
+
+	parserCheck.OnChanged = func(checked bool) {
 		updateHint()
 	}
 
@@ -869,47 +972,15 @@ func main() {
 		updateHint()
 	}
 
-	// === ИНИЦИАЛИЗАЦИЯ ПОДСКАЗКИ ПРИ ЗАПУСКЕ ===
 	updateHint() // ← теперь текст появляется сразу!
-	//updateCheck.OnChanged = func(checked bool) {
-	//	if checked {
-	//		passChecks("Обновление")
-	//	} else {
-	//		_ = outputText.Set("") // все выключены
-	//	}
-	//}
-	//
-	//progressCheck.OnChanged = func(checked bool) {
-	//	if checked {
-	//		passChecks("История")
-	//	} else {
-	//		_ = outputText.Set("") // все выключены
-	//	}
-	//}
-	// Делаем два чекбоксы взаимоисключающими (как радиокнопки)
 
 	// По умолчанию — режим обновления
 	updateCheck.SetChecked(false)
 	progressCheck.SetChecked(false)
 	dcCheck.SetChecked(false)
 	lanCheck.SetChecked(false)
-
-	//blockInputs := func() {
-	//	loginEntry.Disable()
-	//	passEntry.Disable()
-	//	netboxEntry.Disable()
-	//	scheduleEntry.Disable()
-	//	timeEntry.Disable()
-	//
-	//}
-	//
-	//unblockInputs := func() {
-	//	loginEntry.Enable()
-	//	passEntry.Enable()
-	//	netboxEntry.Enable()
-	//	scheduleEntry.Enable()
-	//	timeEntry.Enable()
-	//}
+	parserCheck.SetChecked(false)
+	parserCheck.Disable()
 
 	// Восстанавливаем сохранённый режим
 	if cfg.SaveMode == "progress" {
@@ -947,6 +1018,12 @@ func main() {
 		platformCheck.SetChecked(true)
 	} else if cfg.Mode == "region" {
 		regionCheck.SetChecked(true)
+	} else if cfg.Mode == "acl" {
+		aclCheck.SetChecked(true)
+	}
+
+	if cfg.Parser == "true" {
+		parserCheck.SetChecked(true)
 	}
 
 	if cfg.SavedPlace != "" {
@@ -994,7 +1071,7 @@ func main() {
 		browseBtn.Enable()
 	}
 	if fileExists(configPath) && cfg.SchedulerState == "" {
-		appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
+		appendOutput(outputText, "⚠️ Планировщик не активен! Нажмите «Старт» для запуска.")
 	}
 
 	//сюда блок обзора
@@ -1029,6 +1106,14 @@ func main() {
 			cfg.Mode = "platform"
 		case regionCheck.Checked:
 			cfg.Mode = "region"
+		case aclCheck.Checked:
+			cfg.Mode = "acl"
+		}
+
+		if parserCheck.Checked {
+			cfg.Parser = "true"
+		} else {
+			cfg.Parser = "false"
 		}
 
 		switch {
@@ -1131,11 +1216,14 @@ func main() {
 			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
+			_ = saveConfig(cfg, configPath)
+			time.Sleep(500 * time.Millisecond)
 			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 			//if !platformCheck.Checked {
 			//	cfg.NetboxToken = ""
 			//}
-			_ = saveConfig(cfg, configPath)
+
+			//
 			//SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
 			//if fileExists(configPath) {
 			browseBtn.Disable()
@@ -1186,7 +1274,9 @@ func main() {
 		asIsCheck.SetChecked(false)
 		platformCheck.SetChecked(false)
 		regionCheck.SetChecked(false)
-
+		aclCheck.SetChecked(false)
+		parserCheck.SetChecked(false)
+		parserCheck.Disable()
 		updateCheck.SetChecked(false)
 		progressCheck.SetChecked(false)
 
@@ -1231,7 +1321,7 @@ func main() {
 				}
 			}
 
-			if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
+			if !checkModeSelected(asIsCheck, platformCheck, regionCheck, aclCheck, w) {
 				return
 			}
 			if !passModeSelected(updateCheck, progressCheck, w) {
@@ -1272,6 +1362,9 @@ func main() {
 	cloneBtn.Importance = widget.HighImportance
 
 	loginEntry.OnChanged = func(s string) {
+		if len(s) > 64 {
+			loginEntry.SetText(s[:128])
+		}
 		if saveBtn.Text == "Сбросить" {
 			loginEntry.SetText("")
 			loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
@@ -1288,6 +1381,9 @@ func main() {
 		}
 	}
 	passEntry.OnChanged = func(s string) {
+		if len(s) > 128 {
+			passEntry.SetText(s[:128])
+		}
 		if saveBtn.Text == "Сбросить" {
 			passEntry.SetText("")
 			passEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
@@ -1295,6 +1391,9 @@ func main() {
 	}
 
 	netboxEntry.OnChanged = func(s string) {
+		if len(s) > 256 {
+			netboxEntry.SetText(s[:128])
+		}
 		if saveBtn.Text == "Сбросить" {
 			netboxEntry.SetText("")
 			netboxEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
@@ -1307,6 +1406,8 @@ func main() {
 		asIsCheck.Disable()
 		platformCheck.Disable()
 		regionCheck.Disable()
+		aclCheck.Disable()
+		parserCheck.Disable()
 		progressCheck.Disable()
 		updateCheck.Disable()
 		startPauseBtn.Disable()
@@ -1323,6 +1424,13 @@ func main() {
 		asIsCheck.Enable()
 		platformCheck.Enable()
 		regionCheck.Enable()
+		aclCheck.Enable()
+		if aclCheck.Checked {
+			parserCheck.Enable()
+		} else {
+			parserCheck.Disable()
+		}
+
 		progressCheck.Enable()
 		updateCheck.Enable()
 		dcCheck.Enable()
@@ -1352,6 +1460,29 @@ func main() {
 	//modeCard2 := widget.NewCard("", "", modeRow)
 	//modeRadioContainer := container.NewCenter(modeCard2)
 	startDownload := func() {
+		lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
+
+		// 1. Отмечаем, что идёт важная операция
+		f, err := os.OpenFile(lockPath, os.O_RDWR, 0666)
+		if err == nil {
+			f.Seek(0, 0)
+			f.Truncate(0)
+			fmt.Fprintf(f, "BUSY\n%d\n", os.Getpid())
+			f.Sync()
+			f.Close()
+		}
+
+		// 2. После завершения всей работы — возвращаем нормальный lock
+		defer func() {
+			f, _ := os.OpenFile(lockPath, os.O_RDWR, 0666)
+			if f != nil {
+				f.Seek(0, 0)
+				f.Truncate(0)
+				fmt.Fprintf(f, "%d\n", os.Getpid())
+				f.Sync()
+				f.Close()
+			}
+		}()
 
 		if loginEntry.Text == "" && !fileExists(configPath) {
 			dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
@@ -1370,7 +1501,7 @@ func main() {
 		}
 		//}
 
-		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, w) {
+		if !checkModeSelected(asIsCheck, platformCheck, regionCheck, aclCheck, w) {
 			return
 		}
 		if !passModeSelected(updateCheck, progressCheck, w) {
@@ -1490,7 +1621,7 @@ func main() {
 			if isProgressMode {
 				//appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
 					token, outputText, scroll, manualRun); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
@@ -1523,7 +1654,7 @@ func main() {
 				}
 				//appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(dstDir, sdDst,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
 					token, outputText, scroll); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
@@ -1620,7 +1751,7 @@ func main() {
 			if isProgressMode {
 				//appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
 					token, outputText, scroll, manualRun); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
@@ -1654,7 +1785,7 @@ func main() {
 				}
 				//appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(dstDir, sdDst,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
 					token, outputText, scroll); err != nil {
 					//fyne.Do(func() {
 					appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
@@ -1665,13 +1796,13 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
-							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
+							NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
 						})
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 					} else {
 						//fyne.Do(func() {
 						appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
-						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы.")
+						NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
 						//})
 						//appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 					}
@@ -1755,11 +1886,18 @@ func main() {
 	sortLabel := widget.NewLabel("Сортировка:      ")
 	sortLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	sortBox := container.NewGridWithColumns(3,
+	sortBox := container.NewHBox(
 		container.NewCenter(asIsCheck),
+		container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
+		// ← добавляет отступ вокруг спейсера
 		container.NewCenter(platformCheck),
+		container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
 		container.NewCenter(regionCheck),
+		container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
+		container.NewCenter(aclCheck),
+		container.NewCenter(parserCheck),
 	)
+
 	sortCard := widget.NewCard("", "", sortBox)
 	sortBlock := container.NewHBox(
 		container.NewCenter(sortLabel), // центрируем по вертикали
@@ -1796,6 +1934,11 @@ func main() {
 	passtargetButtonContainer := container.NewHBox(
 		//layout.NewSpacer(),
 		passBlock,
+		//container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
+		//container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
+		//container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
+		//container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
+		//container.NewPadded(layout.NewSpacer(), layout.NewSpacer(), layout.NewSpacer()),
 		targetBlock,
 		//layout.NewSpacer(),
 	)

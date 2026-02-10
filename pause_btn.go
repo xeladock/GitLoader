@@ -73,14 +73,16 @@ func updateButtonAppearance(btn *widget.Button, isRunning bool) {
 
 // Глобальная функция для блокировки/разблокировки (используется в gui4.go)
 func PauseUpdateButtonState(btn *widget.Button, cfg *config.AppConfig, configPath string) {
-	hasConfig := fileExists(configPath) && cfg.GitLabLogin != ""
 
+	hasConfig := fileExists(configPath) && cfg.GitLabLogin != ""
+	//println(hasConfig, "проблема")
 	if !hasConfig {
 		btn.Disable()
 		btn.SetText("Старт")
 		return
 	} else {
 		btn.Enable()
+		//btn.SetText("Старт")
 	}
 
 	updateButtonAppearance(btn, cfg.SchedulerState == "running") // ← ПРАВИЛЬНО: true если "running", false если "paused"
@@ -128,7 +130,7 @@ func CreateStartPauseButton(
 	} else if cfg.SchedulerState == "paused" {
 		updateButtonAppearance(btn, false)
 		fyne.Do(func() {
-			appendOutput(output, "⚠️ ВНИМАНИЕ! Планировщик на ПАУЗЕ. Нажмите «Старт» для возобновления.\n")
+			appendOutput(output, "⚠️ ВНИМАНИЕ! Планировщик не активен! Нажмите «Старт» для запуска.\n")
 		})
 	} else {
 		updateButtonAppearance(btn, false)

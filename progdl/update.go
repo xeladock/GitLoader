@@ -2,6 +2,7 @@
 package progdl
 
 import (
+	"configtool.local/acl"
 	"configtool.local/asis"
 	"configtool.local/platform"
 	"configtool.local/region"
@@ -11,11 +12,12 @@ import (
 
 func RunUpdateMode(
 	targetDir, sortedDst string,
-	asIs, platformMode, regionMode, dcCheck, lanCheck bool,
+	asIs, platformMode, regionMode, dcCheck, lanCheck, aclMode, parserCheck bool,
 	netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
 ) error {
+
 	if platformMode {
 		if err := platform.SortFilesByPlatform(targetDir, sortedDst, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
@@ -30,6 +32,12 @@ func RunUpdateMode(
 		// ← В режиме «Как есть» — НЕ копируем ничего дополнительно!
 		//Append(output, "Режим «Как есть» завершён — файлы уже в нужной папке.\n")
 		return nil
+	}
+
+	if aclMode {
+		if err := acl.SortFilesByACL(targetDir, sortedDst, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
+			return err
+		}
 	}
 
 	if regionMode {

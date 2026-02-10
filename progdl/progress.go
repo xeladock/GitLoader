@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"configtool.local/acl"
 	"configtool.local/asis"
 	config "configtool.local/conf"
 	"configtool.local/platform"
@@ -20,7 +21,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 )
 
-const configPath = "config.json"
+//const configPath = "config.json"
 
 func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 	now := time.Now()
@@ -81,7 +82,7 @@ func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 func RunProgressMode(
 	targetDir, path string,
 	cfg *config.AppConfig,
-	asIs, platformMode, regionMode, dcCheck, lanCheck bool,
+	asIs, platformMode, regionMode, dcCheck, lanCheck, aclMode, parserAdd bool,
 	netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
@@ -105,10 +106,18 @@ func RunProgressMode(
 			return err
 		}
 	}
+
+	if aclMode {
+		if err := acl.SortFilesByACL(targetDir, datedDir, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
+			return err
+		}
+	}
+
 	if asIs {
 		if err := asis.MoveAsIs(targetDir, datedDir, output, dcCheck, lanCheck); err != nil {
 			return err
 		}
+
 	}
 	if regionMode {
 		if err := region.SortByRegion(targetDir, datedDir, output, scroll, dcCheck, lanCheck); err != nil {
