@@ -32,8 +32,10 @@ func MoveAsIs(srcDir, dstDir string, output binding.String, dcCheck, lanCheck bo
 	//hasLAN := dirExists(dstLAN)
 	if !dirExists(dstDir) {
 		return os.Rename(srcDir, dstDir)
+	} else {
+		os.RemoveAll(dstDir)
+		os.MkdirAll(dstDir, 0755)
 	}
-
 	// 2. иначе — синхронизация подпапок
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
@@ -49,6 +51,7 @@ func MoveAsIs(srcDir, dstDir string, output binding.String, dcCheck, lanCheck bo
 		dst := filepath.Join(dstDir, e.Name())
 		//println(src, "-src в filepath", dst, "-dst в filepath")
 		// заменить существующую подпапку
+		//println(dst, "та самая папка")
 		if dirExists(dst) {
 			if err := os.RemoveAll(dst); err != nil {
 				return err
@@ -150,10 +153,10 @@ func MoveAsIs(srcDir, dstDir string, output binding.String, dcCheck, lanCheck bo
 //		if entry != nil {
 //			entry.SetText(entry.Text + text)
 //		}
-func Append(output binding.String, text string) {
-	current, _ := output.Get()
-	_ = output.Set(current + text)
-}
+//func Append(output binding.String, text string) {
+//	current, _ := output.Get()
+//	_ = output.Set(current + text)
+//}
 
 func dirExists(path string) bool {
 	info, err := os.Stat(path)

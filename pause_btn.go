@@ -60,12 +60,27 @@ var (
 //}
 
 // Глобальная функция для цвета и текста
-func updateButtonAppearance(btn *widget.Button, isRunning bool) {
-	if isRunning {
+func updateButtonAppearance(btn *widget.Button, isRunning bool, cfg *config.AppConfig) {
+	//if firstrun {
+	//	firstrun = false
+	//	isRunning = false
+	//}
+
+	//if cfg.SchedulerState = "running"
+
+	//if !cnf{}
+	if cfg.SchedulerState == "" {
+		cfg.SchedulerState = "paused"
+	}
+	//println("isrunning", isRunning)
+	println(cfg.SchedulerState)
+	if cfg.SchedulerState == "running" {
+		//println("на старте")
 		btn.Importance = widget.DangerImportance // красная "Пауза"
 		btn.SetText("Пауза")
 	} else {
-		btn.Importance = widget.HighImportance // зелёная "Старт"
+		//println("на паузе")
+		btn.Importance = widget.HighImportance // синяя "Старт"
 		btn.SetText("Старт")
 	}
 	btn.Refresh()
@@ -73,35 +88,49 @@ func updateButtonAppearance(btn *widget.Button, isRunning bool) {
 
 // Глобальная функция для блокировки/разблокировки (используется в gui4.go)
 func PauseUpdateButtonState(btn *widget.Button, cfg *config.AppConfig, configPath string) {
-
 	hasConfig := fileExists(configPath) && cfg.GitLabLogin != ""
 	//println(hasConfig, "проблема")
 	if !hasConfig {
 		btn.Disable()
 		btn.SetText("Старт")
+		println("нет конфига")
 		return
 	} else {
 		btn.Enable()
+		println("есть конфиг")
 		//btn.SetText("Старт")
+		//time.Sleep(2000)
 	}
+	//println("firstrun в PauseUpdateButtonState", firstrun)
+	////println(cfg.SchedulerState)
+	//if firstrun {
+	//	firstrun = false
+	//	println(cfg.SchedulerState, "1")
+	//	updateButtonAppearance(btn, cfg.SchedulerState == "paused")
+	//
+	//	println(cfg.SchedulerState, "2")
+	//} else {
+	//	println(cfg.SchedulerState, "3")
+	updateButtonAppearance(btn, cfg.SchedulerState == "running", cfg)
+	//println(cfg.SchedulerState, "4")
 
-	updateButtonAppearance(btn, cfg.SchedulerState == "running") // ← ПРАВИЛЬНО: true если "running", false если "paused"
-}
+} // ← ПРАВИЛЬНО: true если "running", false если "paused"
 
 func CreateStartPauseButton(
 	cfg *config.AppConfig,
 	configPath string,
 	cloneAction func(),
 	output binding.String,
+	//firstrun bool,
 	scroll *container.Scroll,
 	w fyne.Window,
 ) *widget.Button {
-
+	//firstrun = false
 	btn := widget.NewButton("Старт", nil)
-
+	println("состояние в CreateStartPauseButton", cfg.SchedulerState)
 	// Восстановление состояния + уведомление
 	if cfg.SchedulerState == "running" && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
-		updateButtonAppearance(btn, true)
+		updateButtonAppearance(btn, true, cfg)
 		schedulerRunning = true
 		schedulerCancel = make(chan struct{})
 		//isAutoRun = true
@@ -128,12 +157,12 @@ func CreateStartPauseButton(
 		)
 
 	} else if cfg.SchedulerState == "paused" {
-		updateButtonAppearance(btn, false)
+		updateButtonAppearance(btn, false, cfg)
 		fyne.Do(func() {
 			appendOutput(output, "⚠️ ВНИМАНИЕ! Планировщик не активен! Нажмите «Старт» для запуска.\n")
 		})
 	} else {
-		updateButtonAppearance(btn, false)
+		updateButtonAppearance(btn, false, cfg)
 	}
 
 	btn.OnTapped = func() {
@@ -164,7 +193,7 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 		cfg.LastRun,
 		func(newLastRun string) {
 			cfg.LastRun = newLastRun
-			//_ = saveConfig(cfg, configPath)
+			_ = saveConfig(cfg, configPath)
 		},
 
 		func() {
@@ -182,7 +211,7 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 
 	fyne.Do(func() {
 		//isAutoRun = true
-		updateButtonAppearance(btn, true)
+		updateButtonAppearance(btn, true, cfg)
 		scroll.ScrollToBottom()
 		//scrollToBottom(scroll)
 		//scroll.Offset = fyne.NewPos(0, scroll.Offset.Y+1000) // ← прокрутка вниз
@@ -204,7 +233,7 @@ func stopScheduler(cfg *config.AppConfig, configPath string, output binding.Stri
 	updateHint()
 
 	fyne.Do(func() {
-		updateButtonAppearance(btn, false)
+		updateButtonAppearance(btn, false, cfg)
 		//scroll.ScrollToBottom()
 		scrollToBottom(scroll)
 		//scroll.Offset = fyne.NewPos(0, scroll.Offset.Y+1000) // ← прокрутка вниз

@@ -60,18 +60,17 @@ func Start(
 	//})
 }
 
-//func clearLogKeepHeader() {
-//	outputText := binding.NewString()
-//	current, _ := outputText.Get()
-//	lines := strings.Split(current, "\n")
+//	func clearLogKeepHeader() {
+//		outputText := binding.NewString()
+//		current, _ := outputText.Get()
+//		lines := strings.Split(current, "\n")
 //
-//	// Оставляем только последние 2 строки (заголовок)
-//	if len(lines) > 2 {
-//		header := strings.Join(lines[len(lines)-3:], "\n") // -3 потому что последняя пустая
-//		outputText.Set(header + "\n")
+//		// Оставляем только последние 2 строки (заголовок)
+//		if len(lines) > 2 {
+//			header := strings.Join(lines[len(lines)-3:], "\n") // -3 потому что последняя пустая
+//			outputText.Set(header + "\n")
+//		}
 //	}
-//}
-
 func ScheduleNext(
 	cfgPath string,
 	targetTime, interval time.Duration,
@@ -80,7 +79,7 @@ func ScheduleNext(
 	cloneAction func(),
 	output binding.String,
 	cancel <-chan struct{},
-	printNext bool, // ← параметр: печатаем ли "Следующий запуск..." в этом цикле
+	printNext bool,
 ) {
 	now := time.Now()
 	loc := now.Location()
@@ -109,33 +108,52 @@ func ScheduleNext(
 	}
 
 	delay := time.Until(nextRun)
+	totalMinutes := int(delay.Minutes())
 
-	// Если printNext == true — печатаем "Следующий запуск..." СРАЗУ
-	if printNext {
-		hours := int(delay.Hours())
-		minutes := int(delay.Minutes()) % 60
-		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+	if totalMinutes < 1 {
+		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (до запуска меньше минуты)\n",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
-			hours, minutes))
+		))
+	} else if printNext {
+		days := totalMinutes / (24 * 60)
+		remainingMinutes := totalMinutes % (24 * 60)
+		hours := remainingMinutes / 60
+		minutes := remainingMinutes % 60
+		var timeParts []string
+		if days > 0 {
+			timeParts = append(timeParts, fmt.Sprintf("%d д.", days))
+		}
+
+		if hours > 0 {
+			timeParts = append(timeParts, fmt.Sprintf("%d ч.", hours))
+		}
+
+		if minutes > 0 || len(timeParts) == 0 {
+			timeParts = append(timeParts, fmt.Sprintf("%d мин.", minutes))
+		}
+		timeStr := strings.Join(timeParts, " ")
+		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %s)\n",
+			nextRun.Format("02.01.2006"),
+			nextRun.Format("15:04"),
+			timeStr,
+		))
 	}
+
+	// Форматирование строки "через ..."
+
+	// Специальный случай: меньше минуты
+	//if totalMinutes < 1 {
+	//	timeStr = "до запуска меньше минуты"
+	//}
 
 	time.AfterFunc(delay, func() {
 		select {
 		case <-cancel:
-			//appendLog(output, "❌ Планировщик остановлен.\n")
 			return
 		default:
 		}
-		//fyne.Do(func() {
-		//	appendLog(output,
-		//		fmt.Sprintf("🚨 Выполняю загрузку по расписанию: %s в %s\n",
-		//			time.Now().Format("02.01.2006"),
-		//			time.Now().Format("15:04"),
-		//		),
-		//	)
-		//})
-		//time.Sleep(2 * time.Second)
+
 		NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
 
 		go func() {
@@ -145,9 +163,86 @@ func ScheduleNext(
 		newLastRun := time.Now().Format(time.RFC3339)
 		onUpdateLastRun(newLastRun)
 
-		ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false) // ← true: печатаем в следующем цикле
+		ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
 	})
 }
+
+//func ScheduleNext(
+//	cfgPath string,
+//	targetTime, interval time.Duration,
+//	lastRun string,
+//	onUpdateLastRun func(string),
+//	cloneAction func(),
+//	output binding.String,
+//	cancel <-chan struct{},
+//	printNext bool, // ← параметр: печатаем ли "Следующий запуск..." в этом цикле
+//) {
+//	now := time.Now()
+//	loc := now.Location()
+//	hour := int(targetTime / time.Hour)
+//	minute := int((targetTime % time.Hour) / time.Minute)
+//
+//	var nextRun time.Time
+//
+//	if lastRun != "" {
+//		last, _ := time.Parse(time.RFC3339, lastRun)
+//		if last.IsZero() {
+//			last = now.Add(-365 * 24 * time.Hour)
+//		}
+//		nextRun = last.Add(interval)
+//		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+//		for !nextRun.After(now) {
+//			nextRun = nextRun.Add(interval)
+//		}
+//	} else {
+//		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//		if now.After(today) || now.Equal(today) {
+//			nextRun = today.Add(interval)
+//		} else {
+//			nextRun = today
+//		}
+//	}
+//
+//	delay := time.Until(nextRun)
+//
+//	// Если printNext == true — печатаем "Следующий запуск..." СРАЗУ
+//	if printNext {
+//		hours := int(delay.Hours())
+//		minutes := int(delay.Minutes()) % 60
+//		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+//			nextRun.Format("02.01.2006"),
+//			nextRun.Format("15:04"),
+//			hours, minutes))
+//	}
+//
+//	time.AfterFunc(delay, func() {
+//		select {
+//		case <-cancel:
+//			//appendLog(output, "❌ Планировщик остановлен.\n")
+//			return
+//		default:
+//		}
+//		//fyne.Do(func() {
+//		//	appendLog(output,
+//		//		fmt.Sprintf("🚨 Выполняю загрузку по расписанию: %s в %s\n",
+//		//			time.Now().Format("02.01.2006"),
+//		//			time.Now().Format("15:04"),
+//		//		),
+//		//	)
+//		//})
+//		//time.Sleep(2 * time.Second)
+//		NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
+//
+//		go func() {
+//			cloneAction()
+//		}()
+//
+//		newLastRun := time.Now().Format(time.RFC3339)
+//		onUpdateLastRun(newLastRun)
+//
+//		ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false) // ← true: печатаем в следующем цикле
+//	})
+//}
 
 func NotifySuccess(title, message string) {
 	//exec.Command("paplay", "./icon/yes.mp3").Run()

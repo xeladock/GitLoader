@@ -36,6 +36,8 @@ import (
 var trayIcon []byte
 var isAutoRun = false // ← флаг: запущено ли по расписанию
 var manualRun = false
+var overridePath = false
+var firstrun = false
 
 // var SecretKey []byte
 var (
@@ -52,83 +54,85 @@ var (
 	parserCheck *widget.Check
 	scroll      *container.Scroll
 	outputText  binding.String
-	nextRunTime time.Time
-	targetTime  time.Duration
-	interval    time.Duration
-	cfg         *conf.AppConfig
-	cfg2        *conf.AppConfig
-	cloneBtn    *widget.Button
-	cancel      chan struct{}
+	//overridePath bool
+	//nextRunTime    time.Time
+	//targetTime     time.Duration
+	//interval       time.Duration
+	//cfg            *conf.AppConfig
+	//cfg2           *conf.AppConfig
+	//cloneBtn       *widget.Button
+	//cancel         chan struct{}
+	chosenOverPath string
 	//schedulerRunning bool
 	// ... другие виджеты, если нужноasIsCheck
 )
 
 // Вызов:
-func SaveDoubleEncryptedConfig(cfg *conf.AppConfig, path string, internalKey, externalKey []byte) error {
-	// 1. Шифруем чувствительные поля (внутренний слой)
-	encPass, err := crypt.Encrypt(cfg.GitLabPass, internalKey)
-	if err != nil {
-		return err
-	}
-	encToken, err := crypt.Encrypt(cfg.NetboxToken, internalKey)
-	if err != nil {
-		return err
-	}
+//func SaveDoubleEncryptedConfig(cfg *conf.AppConfig, path string, internalKey, externalKey []byte) error {
+//	// 1. Шифруем чувствительные поля (внутренний слой)
+//	encPass, err := crypt.Encrypt(cfg.GitLabPass, internalKey)
+//	if err != nil {
+//		return err
+//	}
+//	encToken, err := crypt.Encrypt(cfg.NetboxToken, internalKey)
+//	if err != nil {
+//		return err
+//	}
+//
+//	// Создаём копию с зашифрованными полями
+//	encCfg := *cfg
+//	encCfg.GitLabPass = encPass
+//	encCfg.NetboxToken = encToken
+//
+//	// 2. Сериализуем в JSON
+//	jsonData, err := json.MarshalIndent(encCfg, "", "  ")
+//	if err != nil {
+//		return err
+//	}
+//
+//	// 3. Шифруем весь JSON (внешний слой)
+//	encryptedAll, err := crypt.Encrypt(string(jsonData), externalKey)
+//	if err != nil {
+//		return err
+//	}
+//
+//	// 4. Сохраняем
+//	return os.WriteFile(path, []byte(encryptedAll), 0600)
+//}
 
-	// Создаём копию с зашифрованными полями
-	encCfg := *cfg
-	encCfg.GitLabPass = encPass
-	encCfg.NetboxToken = encToken
-
-	// 2. Сериализуем в JSON
-	jsonData, err := json.MarshalIndent(encCfg, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	// 3. Шифруем весь JSON (внешний слой)
-	encryptedAll, err := crypt.Encrypt(string(jsonData), externalKey)
-	if err != nil {
-		return err
-	}
-
-	// 4. Сохраняем
-	return os.WriteFile(path, []byte(encryptedAll), 0600)
-}
-
-func LoadDoubleEncryptedConfig(path string, internalKey, externalKey []byte) (*conf.AppConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	// 1. Расшифровываем внешний слой
-	jsonStr, err := crypt.Decrypt(string(data), externalKey)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. Парсим JSON
-	cfg := &conf.AppConfig{}
-	if err := json.Unmarshal([]byte(jsonStr), cfg); err != nil {
-		return nil, err
-	}
-
-	// 3. Расшифровываем внутренние поля
-	decPass, err := crypt.Decrypt(cfg.GitLabPass, internalKey)
-	if err != nil {
-		return nil, err
-	}
-	decToken, err := crypt.Decrypt(cfg.NetboxToken, internalKey)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.GitLabPass = decPass
-	cfg.NetboxToken = decToken
-
-	return cfg, nil
-}
+//func LoadDoubleEncryptedConfig(path string, internalKey, externalKey []byte) (*conf.AppConfig, error) {
+//	data, err := os.ReadFile(path)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	// 1. Расшифровываем внешний слой
+//	jsonStr, err := crypt.Decrypt(string(data), externalKey)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	// 2. Парсим JSON
+//	cfg := &conf.AppConfig{}
+//	if err := json.Unmarshal([]byte(jsonStr), cfg); err != nil {
+//		return nil, err
+//	}
+//
+//	// 3. Расшифровываем внутренние поля
+//	decPass, err := crypt.Decrypt(cfg.GitLabPass, internalKey)
+//	if err != nil {
+//		return nil, err
+//	}
+//	decToken, err := crypt.Decrypt(cfg.NetboxToken, internalKey)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	cfg.GitLabPass = decPass
+//	cfg.NetboxToken = decToken
+//
+//	return cfg, nil
+//}
 
 func isValidTime(s string) bool {
 	if len(s) != 5 {
@@ -252,7 +256,7 @@ func loadConfigFromFile() {
 		platformCheck.SetChecked(true)
 	case "region":
 		regionCheck.SetChecked(true)
-	case "ACL":
+	case "acl":
 		aclCheck.SetChecked(true)
 	default:
 		asIsCheck.SetChecked(false)
@@ -476,11 +480,10 @@ type hiddenTheme struct{ fyne.Theme }
 
 func (hiddenTheme) ScrollBarSize() int { return 0 }
 
+// 1000
 func NotifySuccess(title, message string) {
 	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", title, message).Run()
 	sound.PlayYes()
-	//exec.Command("paplay", "./icon/yes.mp3").Run()
-	//cmd.Run() // ошибки молча игнорируем
 }
 
 func NotifyError(title, message string) {
@@ -496,13 +499,13 @@ func NextTime(cfg *conf.AppConfig) string {
 	if cfg == nil {
 		return "Конфигурация не загружена"
 	}
-	//println("12345")
 	if cfg.ScheduleDays <= 0 || cfg.ScheduleTime == "" {
 		return "Планировщик не настроен"
 	}
 
 	// Парсим scheduleTime (формат "HH:MM")
 	parts := strings.Split(cfg.ScheduleTime, ":")
+
 	if len(parts) != 2 {
 		return "Неверный формат времени в настройках"
 	}
@@ -545,24 +548,115 @@ func NextTime(cfg *conf.AppConfig) string {
 
 	delay := time.Until(nextRun)
 
-	hours := int(delay.Hours())
-	minutes := int(delay.Minutes()) % 60
+	// Расчёт в днях, часах и минутах
+	totalMinutes := int(delay.Minutes())
 
-	//println(
-	//	"Следующий запуск: %s в %s. (через %d ч. %d мин.)",
-	//	nextRun.Format("02.01.2006"),
-	//	nextRun.Format("15:04"),
-	//	hours,
-	//	minutes,
-	//)
+	if totalMinutes < 1 {
+		return fmt.Sprintf("▶ Планировщик запущен.\n"+
+			"🔄 Следующий запуск: %s в %s. (до запуска меньше минуты)",
+			nextRun.Format("02.01.2006"),
+			nextRun.Format("15:04"),
+		)
+	}
+
+	days := totalMinutes / (24 * 60)
+	remainingMinutes := totalMinutes % (24 * 60)
+	hours := remainingMinutes / 60
+	minutes := remainingMinutes % 60
+
+	// Формируем строку "через X д. Y ч. Z мин."
+	var timeParts []string
+	if days > 0 {
+		timeParts = append(timeParts, fmt.Sprintf("%d д.", days))
+	}
+	if hours > 0 || days > 0 { // показываем часы, если есть дни или часы > 0
+		timeParts = append(timeParts, fmt.Sprintf("%d ч.", hours))
+	}
+	if minutes > 0 || len(timeParts) == 0 { // минуты всегда, если ничего другого нет
+		timeParts = append(timeParts, fmt.Sprintf("%d мин.", minutes))
+	}
+
+	timeStr := strings.Join(timeParts, " ")
+	println(timeStr)
 	return fmt.Sprintf("▶ Планировщик запущен.\n"+
-		"🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)",
+		"🔄 Следующий запуск: %s в %s. (через %s)",
 		nextRun.Format("02.01.2006"),
 		nextRun.Format("15:04"),
-		hours,
-		minutes,
+		timeStr,
 	)
 }
+
+//func NextTime(cfg *conf.AppConfig) string {
+//	if cfg == nil {
+//		return "Конфигурация не загружена"
+//	}
+//	//println("12345")
+//	if cfg.ScheduleDays <= 0 || cfg.ScheduleTime == "" {
+//		return "Планировщик не настроен"
+//	}
+//
+//	// Парсим scheduleTime (формат "HH:MM")
+//	parts := strings.Split(cfg.ScheduleTime, ":")
+//	if len(parts) != 2 {
+//		return "Неверный формат времени в настройках"
+//	}
+//
+//	hour, errH := strconv.Atoi(parts[0])
+//	minute, errM := strconv.Atoi(parts[1])
+//	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+//		return "Некорректное время в настройках"
+//	}
+//
+//	now := time.Now()
+//	loc := now.Location()
+//
+//	// Рассчитываем время следующего запуска
+//	var nextRun time.Time
+//
+//	if cfg.LastRun == "" {
+//		// Первый запуск — сегодня в указанное время
+//		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//		if now.After(today) || now.Equal(today) {
+//			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+//		} else {
+//			nextRun = today
+//		}
+//	} else {
+//		// Есть LastRun — считаем от него
+//		last, err := time.Parse(time.RFC3339, cfg.LastRun)
+//		if err != nil {
+//			return "Ошибка парсинга LastRun"
+//		}
+//
+//		nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
+//		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+//
+//		// Если nextRun в прошлом — добавляем дни
+//		for !nextRun.After(now) {
+//			nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
+//		}
+//	}
+//
+//	delay := time.Until(nextRun)
+//
+//	hours := int(delay.Hours())
+//	minutes := int(delay.Minutes()) % 60
+//
+//	//println(
+//	//	"Следующий запуск: %s в %s. (через %d ч. %d мин.)",
+//	//	nextRun.Format("02.01.2006"),
+//	//	nextRun.Format("15:04"),
+//	//	hours,
+//	//	minutes,
+//	//)
+//	return fmt.Sprintf("▶ Планировщик запущен.\n"+
+//		"🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)",
+//		nextRun.Format("02.01.2006"),
+//		nextRun.Format("15:04"),
+//		hours,
+//		minutes,
+//	)
+//}
 
 //const lockFileName = "gittornado.lock"
 
@@ -593,6 +687,8 @@ func killProcess(pid int) error {
 }
 
 func main() {
+	//NotifySuccess("1", "2")
+
 	//const configPath = "config.json"
 	//var cfg *conf.AppConfig
 	//var err error
@@ -605,6 +701,7 @@ func main() {
 	//cancel = make(chan struct{})
 	targetDir := "./configs" // куда клонируем репо
 	sortedDst := "./config_files_clear"
+
 	lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
 
 	oldContent, _ := os.ReadFile(lockPath)
@@ -735,15 +832,23 @@ func main() {
 				for range open.ClickedCh {
 
 					fyne.Do(func() {
+						//freshCfg, err := LoadConfig(configPath)
+						//if err == nil {
+						//	cfg = freshCfg // обновляем глобальный cfg (или локальный)
+						//}
+						//666
 						loadConfigFromFile()
 						outputText.Set("")
 						updateHint()
 						if fileExists(configPath) && cfg.SchedulerState == "running" {
+							//println(cfg.SchedulerState, "услвоие 1")
 							appendOutput(outputText, NextTime(cfg))
 						} else if fileExists(configPath) && cfg.SchedulerState == "paused" {
-							appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик не включен. Нажмите «Старт» для возобновления.")
-						} else if fileExists(configPath) && cfg.SchedulerState == "" {
-							appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
+							//println(cfg.SchedulerState, "услвоие 2")
+							appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик не активен. Нажмите «Старт» для возобновления.")
+							//} else if fileExists(configPath) && cfg.SchedulerState == "" {
+							//	println(cfg.SchedulerState, "услвоие 3")
+							//	appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
 						}
 
 						//refreshSchedulerStatus()
@@ -805,7 +910,7 @@ func main() {
 	//выбор папки
 	savePathEntry := widget.NewEntry()
 	savePathEntry.SetPlaceHolder("Папка сохранения. По-умолчанию - текущая")
-
+	//888
 	browseBtn := widget.NewButton("Обзор", func() {
 		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err != nil {
@@ -1070,9 +1175,9 @@ func main() {
 	} else {
 		browseBtn.Enable()
 	}
-	if fileExists(configPath) && cfg.SchedulerState == "" {
-		appendOutput(outputText, "⚠️ Планировщик не активен! Нажмите «Старт» для запуска.")
-	}
+	//if fileExists(configPath) && cfg.SchedulerState == "paused" {
+	//	appendOutput(outputText, "⚠️ Планировщик не активен! Нажмите «Старт» для запуска.")
+	//}
 
 	//сюда блок обзора
 	//PauseUpdateButtonState(startPauseBtn, cfg, configPath)
@@ -1140,7 +1245,14 @@ func main() {
 				currentDir = "." // fallback
 			}
 			chosenPath = currentDir
-			savePathEntry.SetPlaceHolder(" ✅ Текущая папка сохранения") // показываем пользователю
+			//savePathEntry.SetPlaceHolder(" ✅ Текущая папка сохранения") // показываем пользователю
+		} else if chosenPath[0] != '/' {
+			dialog.ShowInformation(
+				"Ой!",
+				"Укажите корректный путь загрузки.\n",
+				w,
+			)
+			return // или continue — в зависимости от контекста
 		}
 
 		cfg.SavedPlace = chosenPath
@@ -1194,7 +1306,6 @@ func main() {
 		} else {
 			cfg.ScheduleTime = strings.TrimSpace(timeEntry.Text)
 		}
-
 		cfg.ScheduleDays = days
 		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
 		if err := saveConfig(cfg, configPath); err != nil {
@@ -1216,21 +1327,22 @@ func main() {
 			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
-			_ = saveConfig(cfg, configPath)
-			time.Sleep(500 * time.Millisecond)
+
 			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
-			//if !platformCheck.Checked {
-			//	cfg.NetboxToken = ""
+			_ = saveConfig(cfg, configPath)
+
+			//freshCfg, err := LoadConfig(configPath)
+			//if err == nil {
+			//	cfg = freshCfg
+			//} else {
+			//	println("Ошибка перечитывания:", err)
 			//}
 
-			//
-			//SaveDoubleEncryptedConfig(cfg, "config.secure", crypt.SecretKey, crypt.SecretKey)
-			//if fileExists(configPath) {
 			browseBtn.Disable()
 			//}
 			outputText.Set("")
 			updateHint()
-			appendOutput(outputText, "✅ Настройки сохранены. Нажмите СТАРТ для запуска планировщика.")
+			appendOutput(outputText, "✅ Настройки сохранены. Нажмите «Старт» для запуска планировщика.")
 			saveBtn.SetText("Сбросить")
 			//blockInputs()
 
@@ -1256,11 +1368,11 @@ func main() {
 	resetConfig := func() {
 
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
-			outputView.SetText(outputView.Text + "\n❌ Ошибка удаления config.json: " + err.Error())
+			outputView.SetText(outputView.Text + "\n❌ Ошибка сброса настроек: " + err.Error())
 			return
 		}
 		//loginEntry.SetEditable(true)
-		println("login editable in reset")
+		//println("login editable in reset")
 		saveBtn.SetText("Сохранить")
 
 		// Сбрасываем GUI
@@ -1292,9 +1404,13 @@ func main() {
 		browseBtn.Enable()
 		//netboxEntry.Disable()
 		appendOutput(outputText, "⚙️ Настройки сброшены.\n")
-		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
-		updateButtonState()
 
+		//println("first run в reset", firstrun)
+		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+		//firstrun = true
+		cfg.SchedulerState = ""
+		updateButtonState()
+		//println(cfg.SchedulerState, "на что смотрю")
 		//unblockInputs()
 	}
 
@@ -1351,7 +1467,9 @@ func main() {
 			)
 			return
 		} else {
-			setConfig() //функция установки
+			setConfig()
+			//time.Sleep(500 * time.Millisecond)
+			//функция установки
 			//blockInputs()
 
 		}
@@ -1377,7 +1495,7 @@ func main() {
 			//fyne.CurrentApp().Driver().CanvasForObject(loginEntry).Focus(nil)
 			//println("login not editable in set")
 			//ReadOnlyEntry2(loginEntry)
-			//5555
+
 		}
 	}
 	passEntry.OnChanged = func(s string) {
@@ -1451,7 +1569,7 @@ func main() {
 	//modeRadio.SetSelected("Обновление")
 
 	// Горизонтальная строка: слева — подпись, справа — радиокнопки
-
+	//111
 	//modeRow := container.NewHBox(
 	//	label,
 	//	layout.NewSpacer(),
@@ -1460,6 +1578,7 @@ func main() {
 	//modeCard2 := widget.NewCard("", "", modeRow)
 	//modeRadioContainer := container.NewCenter(modeCard2)
 	startDownload := func() {
+
 		lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
 
 		// 1. Отмечаем, что идёт важная операция
@@ -1519,8 +1638,12 @@ func main() {
 		fyne.Do(allBlock)
 		//allBlock()
 		if manualRun {
+			appendOutput(outputText, "🟢 Запуск по запросу пользователя\n")
 			time.Sleep(500 * time.Millisecond)
 			appendOutput(outputText, "🔥 Начинаю загрузку из GitLab...\n")
+			//NotifySuccess("раз!", "два")
+			//exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", "раз", "два").Run()
+
 		} else {
 			appendOutput(outputText,
 				fmt.Sprintf("🚨 Выполняю загрузку по расписанию: %s в %s\n",
@@ -1553,9 +1676,13 @@ func main() {
 		if token == "" && cfg.NetboxToken != "" {
 			token = decryptedToken
 		}
-		if path == "" && cfg.SavedPlace != "" {
+		if overridePath {
+			overridePath = false
+			path = chosenOverPath
+		} else if path == "" && cfg.SavedPlace != "" {
 			path = cfg.SavedPlace
 		}
+		//555
 
 		os.RemoveAll(filepath.Join(path, targetDir))
 
@@ -1588,7 +1715,7 @@ func main() {
 				switch {
 				case strings.Contains(string(outputBytes), "Authentication failed"):
 					appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
-
+					os.RemoveAll(filepath.Join(path, targetDir))
 				case strings.Contains(string(outputBytes), "not found"):
 					appendOutput(outputText, "Ошибка: git не найден в PATH\n")
 
@@ -1640,7 +1767,7 @@ func main() {
 					} else {
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
-							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+							//NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 					}
@@ -1717,7 +1844,7 @@ func main() {
 				switch {
 				case strings.Contains(string(outputBytes), "Authentication failed"):
 					appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
-
+					os.RemoveAll(filepath.Join(path, targetDir))
 				case strings.Contains(string(outputBytes), "not found"):
 					appendOutput(outputText, "Ошибка: git не найден в PATH\n")
 
@@ -1759,6 +1886,7 @@ func main() {
 						NotifyError("Oй!", "Что-то пошло нет так!")
 					})
 				} else {
+					//1002
 					if dcCheck.Checked && lanCheck.Checked {
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 						fyne.Do(func() {
@@ -1766,11 +1894,15 @@ func main() {
 							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						})
 					} else {
+						fyne.Do(func() {
+							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
+							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+						})
+						//appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
 						//fyne.Do(func() {
-						appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
-						NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+						//
+						//NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
 						//})
-						//appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 
 					}
 				}
@@ -1800,10 +1932,13 @@ func main() {
 						})
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 					} else {
-						//fyne.Do(func() {
-						appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
-						NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
-						//})
+
+						fyne.Do(func() {
+							appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+							NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
+							//exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "2000", "1", "2").Run()
+							//NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
+						})
 						//appendOutput(outputText, "Все операции для ЛВС выполнены!\n")
 					}
 				}
@@ -1841,22 +1976,51 @@ func main() {
 		if fileExists(configPath) && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
 			dialog.ShowConfirm(
 				"Ой!",
-				"Загрузить принудительно?\n",
+				"Планировщик настроен. Загрузить принудительно?\n",
 				func(confirmed bool) {
 					if confirmed {
-						//clearLogKeepHeader(outputText, &output.Entry)
-						appendOutput(outputText, "🟢 Запуск по запросу пользователя.\n")
-						manualRun = true
-						go func() {
-							startDownload()
-						}()
-						// ← запускаем скачивание
+						// Пользователь сказал "Да" → спрашиваем про перезапись
+						dialog.ShowConfirm(
+							"Ой!",
+							"Сохранить файлы в назначенной папке планировщика?\n",
+							//"Да → перезаписать\n"+
+							//"Нет → выбрать другую папку",
+							func(overwrite bool) {
+								manualRun = true
+								if overwrite {
+									// Да — перезаписываем в стандартную папку
+									//appendOutput(outputText, "🟢 Запуск по запросу пользователя.\n")
+									//time.Sleep(1000 * time.Millisecond)
+
+									go startDownload()
+								} else {
+									overridePath = true
+									// Нет — выбираем папку
+									dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+										if err != nil || uri == nil {
+											//appendOutput(outputText, "Выбор папки отменён.\n")
+											return
+										}
+
+										chosenOverPath = uri.Path()
+										println(chosenOverPath)
+										//newPathEntry.SetText(chosenPath)
+										//chosenPath := uri.Path()
+
+										//444
+										// ← Здесь запускаем с кастомным путём
+										go startDownload()
+									}, w)
+								}
+							},
+							w,
+						)
 					}
 				},
 				w,
 			)
 		} else {
-			// Если расписания нет — скачиваем сразу
+			// Если планировщика нет — просто запускаем
 			go startDownload()
 		}
 	}
