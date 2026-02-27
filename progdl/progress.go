@@ -82,7 +82,7 @@ func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 func RunProgressMode(
 	targetDir, path string,
 	cfg *config.AppConfig,
-	asIs, platformMode, regionMode, dcCheck, lanCheck, aclMode, parserAdd bool,
+	asIs, platformMode, regionMode, dcbool, lanbool, aclMode, parserAdd bool,
 	netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
@@ -102,25 +102,25 @@ func RunProgressMode(
 
 	// === Та же сортировка ===
 	if platformMode {
-		if err := platform.SortFilesByPlatform(targetDir, datedDir, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
+		if err := platform.SortFilesByPlatform(targetDir, datedDir, netboxToken, output, scroll, dcbool, lanbool); err != nil {
 			return err
 		}
 	}
 
 	if aclMode {
-		if err := acl.SortFilesByACL(targetDir, datedDir, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
+		if err := acl.SortFilesByACL(targetDir, datedDir, netboxToken, output, scroll, dcbool, lanbool); err != nil {
 			return err
 		}
 	}
 
 	if asIs {
-		if err := asis.MoveAsIs(targetDir, datedDir, output, dcCheck, lanCheck); err != nil {
+		if err := asis.MoveAsIs(targetDir, datedDir, output, dcbool, lanbool); err != nil {
 			return err
 		}
 
 	}
 	if regionMode {
-		if err := region.SortByRegion(targetDir, datedDir, output, scroll, dcCheck, lanCheck); err != nil {
+		if err := region.SortByRegion(targetDir, datedDir, output, scroll, dcbool, lanbool); err != nil {
 			return err
 		}
 	}

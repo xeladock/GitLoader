@@ -73,7 +73,7 @@ func updateButtonAppearance(btn *widget.Button, isRunning bool, cfg *config.AppC
 		cfg.SchedulerState = "paused"
 	}
 	//println("isrunning", isRunning)
-	println(cfg.SchedulerState)
+	//println(cfg.SchedulerState)
 	if cfg.SchedulerState == "running" {
 		//println("на старте")
 		btn.Importance = widget.DangerImportance // красная "Пауза"
@@ -93,11 +93,11 @@ func PauseUpdateButtonState(btn *widget.Button, cfg *config.AppConfig, configPat
 	if !hasConfig {
 		btn.Disable()
 		btn.SetText("Старт")
-		println("нет конфига")
+		//println("нет конфига")
 		return
 	} else {
 		btn.Enable()
-		println("есть конфиг")
+		//println("есть конфиг")
 		//btn.SetText("Старт")
 		//time.Sleep(2000)
 	}
@@ -127,7 +127,7 @@ func CreateStartPauseButton(
 ) *widget.Button {
 	//firstrun = false
 	btn := widget.NewButton("Старт", nil)
-	println("состояние в CreateStartPauseButton", cfg.SchedulerState)
+	//println("состояние в CreateStartPauseButton", cfg.SchedulerState)
 	// Восстановление состояния + уведомление
 	if cfg.SchedulerState == "running" && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
 		updateButtonAppearance(btn, true, cfg)

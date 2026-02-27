@@ -13,7 +13,7 @@ import (
 
 // MoveAsIs — просто переименовывает папку configs → configs_file_clear
 func MoveAsIs(srcDir, dstDir string, output binding.String, dcCheck, lanCheck bool) error {
-	println(dstDir, "dstDir в самом начале move_asis")
+	//println(dstDir, "dstDir в самом начале move_asis")
 
 	//hasDC := filepath.Join(dstDir, "ЦОД")
 	//hasLAN := filepath.Join(dstDir, "ЛВС")
@@ -71,9 +71,9 @@ func MoveAsIs(srcDir, dstDir string, output binding.String, dcCheck, lanCheck bo
 	//if lanCheck {
 	//	Append(output, fmt.Sprintf("Папка ЛВС загружена успешно (Как есть)!\n"))
 	//}
-	println(srcDir, "-src в move_asis")
+	//println(srcDir, "-src в move_asis")
 	parent := filepath.Dir(srcDir)
-	println(parent, "на удаление")
+	//println(parent, "на удаление")
 	return os.RemoveAll(parent)
 }
 

@@ -36,53 +36,54 @@ import (
 
 var aclPlatforms2 = map[string]struct{}{
 	"Cisco ASA":             {},
-	"Cisco FXOS":            {},
 	"Cisco IOS":             {},
 	"Cisco IOS XE":          {},
 	"Cisco NX-OS":           {},
+	"Cisco FXOS":            {},
+	"Eltex":                 {},
 	"FortiOS":               {},
 	"Huawei VRP":            {},
+	"Eltex ESR":             {},
 	"B4COM BCOM-OS-DC":      {},
 	"EdgeCore":              {},
 	"IBM/Lenovo Network OS": {},
 	"HP ProCurve":           {},
 	"Dell Networking OS":    {},
 	"Juniper Junos":         {},
-	"Eltex":                 {},
 	"Cisco IOS XR":          {},
 	"Cisco PIX":             {},
 	"QTECH NOS":             {},
 	"Raisecom":              {},
-	"ELTEX ESR":             {},
 }
 
 func SortFilesByACL(
 	srcDir, dstBase, netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
-	dcCheck, lanCheck bool,
+	dcbool, lanbool bool,
 ) error {
 
 	typeDirs := []string{}
 	//println(dstBase, "- dstbase", srcDir, "- srcdir")
-	if dcCheck {
+	if dcbool {
 		os.RemoveAll(dstBase)
+		os.MkdirAll(dstBase, 0755)
 		//os.RemoveAll(filepath.Join(dstBase, "ЦОД"))
 		typeDirs = append(typeDirs, "ЦОД")
 	}
-	if lanCheck {
+	if lanbool {
 		//println(dstBase, "очистка lan для платформы")
 		os.RemoveAll(dstBase)
+		os.MkdirAll(dstBase, 0755)
 		//os.RemoveAll(filepath.Join(dstBase, "ЛВС"))
 		typeDirs = append(typeDirs, "ЛВС")
 	}
 
-	//allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
-	allowedRoots := []string{"DV"}
-
+	allowedRoots := []string{"CE", "SI", "SZ", "UR", "PR", "UK", "DV"}
+	//allowedRoots := []string{"SI"}
 	for _, t := range typeDirs {
 		//println(t, srcDir)
-		AppendToOutput(output, scroll, fmt.Sprintf("⏳ Начинаю сортировку для УЭС%s \n", t))
+		AppendToOutput(output, scroll, fmt.Sprintf("\n⏳ Начинаю сортировку для УЭС%s \n", t))
 		//typeSrc := filepath.Join(srcDir)
 		//println(typeSrc, "- typesrc")
 		if !dirExists(srcDir) {
@@ -95,12 +96,12 @@ func SortFilesByACL(
 			}
 
 			fileName := info.Name()
-			upper := strings.ToUpper(fileName)
-
+			//upper := strings.ToUpper(fileName)
+			//println(fileName)
 			// фильтр по корням
 			valid := false
 			for _, root := range allowedRoots {
-				if strings.HasPrefix(upper, root) {
+				if strings.HasPrefix(fileName, root) {
 					valid = true
 					break
 				}
@@ -111,6 +112,7 @@ func SortFilesByACL(
 
 			deviceName := strings.Split(fileName, ".")[0]
 			platform, err := nb.GetDevicePlatform(deviceName, netboxToken)
+			//println(platform)
 			if err != nil || platform == "" {
 				return nil
 			} else if IsACLPlatform(platform) {
@@ -167,11 +169,8 @@ func AppendToOutput(output binding.String, scroll *container.Scroll, text string
 	}
 	fyne.Do(func() {
 		scroll.ScrollToBottom()
-		//scroll.Refresh()
 	})
 
-	//time.AfterFunc(20*time.Millisecond, func() {
-	//	scroll.ScrollToBottom()
 }
 func copyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)

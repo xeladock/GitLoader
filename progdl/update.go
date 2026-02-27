@@ -2,8 +2,12 @@
 package progdl
 
 import (
+	"fmt"
+	"time"
+
 	"configtool.local/acl"
 	"configtool.local/asis"
+	config "configtool.local/conf"
 	"configtool.local/platform"
 	"configtool.local/region"
 	"fyne.io/fyne/v2/container"
@@ -12,10 +16,12 @@ import (
 
 func RunUpdateMode(
 	targetDir, sortedDst string,
+	cfg *config.AppConfig,
 	asIs, platformMode, regionMode, dcCheck, lanCheck, aclMode, parserCheck bool,
 	netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
+	manualRun bool,
 ) error {
 
 	if platformMode {
@@ -53,6 +59,18 @@ func RunUpdateMode(
 
 	if err := copyDir(sortedDst, currentDir); err != nil {
 		return err
+	}
+	time.Sleep(500 * time.Millisecond)
+	if manualRun == false {
+		nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
+		delay := time.Until(nextTime)
+		hours := int(delay.Hours())
+		minutes := int(delay.Minutes()) - hours*60
+
+		appendOutput(output, scroll, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+			nextTime.Format("02.01.2006"),
+			nextTime.Format("15:04"),
+			hours, minutes))
 	}
 
 	//Append(output, "Текущие файлы успешно обновлены.\n")

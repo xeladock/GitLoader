@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"configtool.local/state_var"
 	//"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	//"fyne.io/fyne/v2/widget"
@@ -15,6 +16,7 @@ import (
 )
 
 type UpdateHintFunc func()
+type stoprun bool
 
 // Start запускает планировщик
 // cfgPath — путь к config.json (чтобы сохранить LastRun)
@@ -45,6 +47,8 @@ func Start(
 	minute, _ := strconv.Atoi(parts[1])
 	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
 		appendLog(output, "Ошибка: некорректное время in config.json\n")
+		//cfg.SchedulerState = "paused"
+		//_ = saveConfig(cfg, configPath)
 		return
 	}
 
@@ -60,17 +64,6 @@ func Start(
 	//})
 }
 
-//	func clearLogKeepHeader() {
-//		outputText := binding.NewString()
-//		current, _ := outputText.Get()
-//		lines := strings.Split(current, "\n")
-//
-//		// Оставляем только последние 2 строки (заголовок)
-//		if len(lines) > 2 {
-//			header := strings.Join(lines[len(lines)-3:], "\n") // -3 потому что последняя пустая
-//			outputText.Set(header + "\n")
-//		}
-//	}
 func ScheduleNext(
 	cfgPath string,
 	targetTime, interval time.Duration,
@@ -80,6 +73,7 @@ func ScheduleNext(
 	output binding.String,
 	cancel <-chan struct{},
 	printNext bool,
+	// manualRun stoprun,
 ) {
 	now := time.Now()
 	loc := now.Location()
@@ -111,7 +105,7 @@ func ScheduleNext(
 	totalMinutes := int(delay.Minutes())
 
 	if totalMinutes < 1 {
-		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (до запуска меньше минуты)\n",
+		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. ( До запуска меньше минуты. )\n",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
 		))
@@ -140,30 +134,52 @@ func ScheduleNext(
 		))
 	}
 
-	// Форматирование строки "через ..."
-
-	// Специальный случай: меньше минуты
-	//if totalMinutes < 1 {
-	//	timeStr = "до запуска меньше минуты"
-	//}
-
 	time.AfterFunc(delay, func() {
+		//println(manualRun, "manaulrun из планировщика")
+		//if manualRun == true {
 		select {
 		case <-cancel:
 			return
 		default:
 		}
 
-		NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
+		//if state_var.IsDownloading.Load() {
+		//	println(" Загрузка уже идёт (ручная). Запуск по расписанию отменён")
+		//	return // молча отменяем — без ошибки
+		//}
+		//
+		//state_var.IsDownloading.Store(true)
+		//defer state_var.IsDownloading.Store(false)
+		println(state_var.ManRun.Load(), "перед запуском 1")
+		//state_var.ManRun.CompareAndSwap(false, true)
+		//println(state_var.ManRun.Load(), "перед запуском 2")
+		if !state_var.ManRun.Load() {
 
-		go func() {
-			cloneAction()
-		}()
+			NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
 
-		newLastRun := time.Now().Format(time.RFC3339)
-		onUpdateLastRun(newLastRun)
+			go func() {
+				cloneAction()
+			}()
 
-		ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
+			newLastRun := time.Now().Format(time.RFC3339)
+			onUpdateLastRun(newLastRun)
+
+			//println("всё хорошо")
+			ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
+			//println(printNext, "'это printNext")
+		} else {
+			println("уже настроено")
+
+			newLastRun := time.Now().Format(time.RFC3339)
+			onUpdateLastRun(newLastRun)
+			//state_var.ManRun.CompareAndSwap(false, true)
+			//println("всё хорошо")
+			ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
+		}
+		//} else {
+		//	//cfg.LastRun = time.Now().Format(time.RFC3339)
+		//	appendLog(output, "УЖЕ ЗАПУЩЕНО")
+		//}
 	})
 }
 

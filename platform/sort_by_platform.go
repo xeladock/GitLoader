@@ -17,29 +17,34 @@ func SortFilesByPlatform(
 	srcDir, dstBase, netboxToken string,
 	output binding.String,
 	scroll *container.Scroll,
-	dcCheck, lanCheck bool,
+	dcbool, lanbool bool,
 ) error {
-
+	println("sort by platform", dcbool, lanbool)
 	typeDirs := []string{}
 	//println(dstBase, "- dstbase", srcDir, "- srcdir")
-	if dcCheck {
+	if dcbool {
 		os.RemoveAll(dstBase)
+		os.MkdirAll(dstBase, 0755)
 		//os.RemoveAll(filepath.Join(dstBase, "ЦОД"))
 		typeDirs = append(typeDirs, "ЦОД")
+		//dcbool = false
+
 	}
-	if lanCheck {
-		println(dstBase, "очистка lan для платформы")
+	if lanbool {
+		//println(dstBase, "очистка lan для платформы")
 		os.RemoveAll(dstBase)
+		os.MkdirAll(dstBase, 0755)
 		//os.RemoveAll(filepath.Join(dstBase, "ЛВС"))
 		typeDirs = append(typeDirs, "ЛВС")
+		//lanbool = false
 	}
 
-	allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
-	//allowedRoots := []string{"DV"}
+	//allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
+	allowedRoots := []string{"DV"}
 
 	for _, t := range typeDirs {
 		//println(t, srcDir)
-		AppendToOutput(output, scroll, fmt.Sprintf("⏳ Начинаю сортировку для УЭС%s \n", t))
+		AppendToOutput(output, scroll, fmt.Sprintf("\n⏳ Начинаю сортировку для УЭС%s \n", t))
 		//typeSrc := filepath.Join(srcDir)
 		//println(typeSrc, "- typesrc")
 		if !dirExists(srcDir) {
@@ -52,12 +57,12 @@ func SortFilesByPlatform(
 			}
 
 			fileName := info.Name()
-			upper := strings.ToUpper(fileName)
+			//upper := strings.ToUpper(fileName)
 
 			// фильтр по корням
 			valid := false
 			for _, root := range allowedRoots {
-				if strings.HasPrefix(upper, root) {
+				if strings.HasPrefix(fileName, root) {
 					valid = true
 					break
 				}
@@ -71,6 +76,7 @@ func SortFilesByPlatform(
 			if err != nil || platform == "" {
 				platform = "Unknown"
 			}
+			platform = strings.ReplaceAll(platform, "/", "_")
 			//println(dstBase, "- dstbase", platform, "-platform")
 			targetDir := filepath.Join(dstBase, platform)
 			if err := os.MkdirAll(targetDir, 0777); err != nil {
@@ -109,11 +115,6 @@ func dirExists(path string) bool {
 	return info.IsDir()
 }
 
-//func scr(*container.Scroll) {
-//	scroll := container.Scroll{}
-//	scroll.ScrollToBottom()
-//}
-
 var t = 0
 
 func AppendToOutput(output binding.String, scroll *container.Scroll, text string) {
@@ -128,9 +129,23 @@ func AppendToOutput(output binding.String, scroll *container.Scroll, text string
 		scroll.ScrollToBottom()
 		//scroll.Refresh()
 	})
+}
 
-	//time.AfterFunc(20*time.Millisecond, func() {
-	//	scroll.ScrollToBottom()
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	return err
 }
 
 //func AppendToOutput2(output binding.String, scroll *container.Scroll, msg string) {
@@ -150,23 +165,6 @@ func AppendToOutput(output binding.String, scroll *container.Scroll, text string
 //		scroll.ScrollToBottom()
 //	}
 //}()
-
-func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, sourceFile)
-	return err
-}
 
 //func ClearDestination(dstDir string) error {
 //	// Удаляем всё содержимое (или всю папку)

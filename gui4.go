@@ -17,6 +17,7 @@ import (
 	"configtool.local/crypt"
 	"configtool.local/progdl"
 	"configtool.local/sound"
+	"configtool.local/state_var"
 	"fyne.io/fyne/v2/theme"
 	//"configtool.local/start_stop"
 	// "configtool.local/window_action" // removed, using systray instead
@@ -32,12 +33,12 @@ import (
 )
 
 //go:embed icon/icon.png
-
 var trayIcon []byte
-var isAutoRun = false // ← флаг: запущено ли по расписанию
-var manualRun = false
-var overridePath = false
-var firstrun = false
+
+//go:embed icon/icon_white.png
+var white_trayIcon []byte
+
+//var firstrun = false
 
 // var SecretKey []byte
 var (
@@ -54,6 +55,7 @@ var (
 	parserCheck *widget.Check
 	scroll      *container.Scroll
 	outputText  binding.String
+	//IsDownloading atomic.Bool
 	//overridePath bool
 	//nextRunTime    time.Time
 	//targetTime     time.Duration
@@ -67,6 +69,11 @@ var (
 	// ... другие виджеты, если нужноasIsCheck
 )
 
+var isAutoRun = false // ← флаг: запущено ли по расписанию
+//var manualRun = false
+
+//var overridePath = false
+//state_var.OverridePath = false
 // Вызов:
 //func SaveDoubleEncryptedConfig(cfg *conf.AppConfig, path string, internalKey, externalKey []byte) error {
 //	// 1. Шифруем чувствительные поля (внутренний слой)
@@ -513,6 +520,8 @@ func NextTime(cfg *conf.AppConfig) string {
 	hour, errH := strconv.Atoi(parts[0])
 	minute, errM := strconv.Atoi(parts[1])
 	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+		//cfg.SchedulerState = "paused"
+		//_ = saveConfig(cfg, configPath)
 		return "Некорректное время в настройках"
 	}
 
@@ -553,7 +562,7 @@ func NextTime(cfg *conf.AppConfig) string {
 
 	if totalMinutes < 1 {
 		return fmt.Sprintf("▶ Планировщик запущен.\n"+
-			"🔄 Следующий запуск: %s в %s. (до запуска меньше минуты)",
+			"🔄 Следующий запуск: %s в %s. ( До запуска меньше минуты. )",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
 		)
@@ -577,8 +586,8 @@ func NextTime(cfg *conf.AppConfig) string {
 	}
 
 	timeStr := strings.Join(timeParts, " ")
-	println(timeStr)
-	return fmt.Sprintf("▶ Планировщик запущен.\n"+
+	//println(timeStr)
+	return fmt.Sprintf(
 		"🔄 Следующий запуск: %s в %s. (через %s)",
 		nextRun.Format("02.01.2006"),
 		nextRun.Format("15:04"),
@@ -686,7 +695,30 @@ func killProcess(pid int) error {
 	return p.Signal(syscall.SIGTERM) // мягкое завершение
 }
 
+//	func updateTrayIcon() {
+//		if fyne.CurrentApp().Settings().Theme() == theme.DarkTheme() {
+//			systray.SetIcon(darkIcon.StaticContent())
+//			.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
+//		} else {
+//			systray.SetIcon(lightIcon.StaticContent())
+//		}
+//	}
+//
+// 1001
 func main() {
+	//println(state_var.ManRun.Load())
+	//
+	//if state_var.ManRun.CompareAndSwap(true, false) {
+	//	// молча отменяем — без уведомления и ошибки
+	//	println(state_var.ManRun.Load())
+	//
+	//}
+	//
+	//println(state_var.ManRun.Load())
+	//
+	//if state_var.ManRun.Load() == true {
+	//}
+
 	//NotifySuccess("1", "2")
 
 	//const configPath = "config.json"
@@ -731,12 +763,26 @@ func main() {
 	}
 
 	// Если нет BUSY, но процесс жив → убиваем старый
-	if oldPID > 0 && isProcessRunning(oldPID) {
-		//fmt.Printf("Завершаем старый экземпляр (PID %d)\n", oldPID)
-		exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "2000", "Oй!", "Рестарт процесса!").Run()
-		killProcess(oldPID)
-		time.Sleep(1500 * time.Millisecond)
-		os.Remove(lockPath)
+	//if oldPID > 0 && isProcessRunning(oldPID) {
+	//	//fmt.Printf("Завершаем старый экземпляр (PID %d)\n", oldPID)
+	//	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "2000", "Oй!", "Рестарт процесса!").Run()
+	//	killProcess(oldPID)
+	//	time.Sleep(1500 * time.Millisecond)
+	//	os.Remove(lockPath)
+	//}
+	//1005
+	if oldPID > 0 {
+		if !isProcessRunning(oldPID) {
+			//println("Найден старый lock от мёртвого процесса — удаляем")
+			os.Remove(lockPath)
+		} else {
+			exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "2000", "Oй!", "Рестарт процесса!").Run()
+			killProcess(oldPID)
+			time.Sleep(1500 * time.Millisecond)
+			os.Remove(lockPath)
+			//println("Программа уже запущена (PID:", oldPID, ")")
+			//os.Exit(1)
+		}
 	}
 
 	// Создаём новый lock
@@ -799,8 +845,17 @@ func main() {
 	a.Settings().SetTheme(theme.LightTheme())
 	//a.Settings().SetTheme(hiddenTheme{})
 	// Set Fyne app icon as well (optional)
-	a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
-
+	//if fyne.CurrentApp().Settings().Theme() == theme.LightTheme() {
+	//	systray.SetIcon(trayIcon)
+	//	//systray.SetIcon(darkIcon.StaticContent())
+	//	//a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
+	//} else {
+	//	systray.SetIcon(white_trayIcon)
+	//	//systray.SetIcon(lightIcon.StaticContent())
+	//	//a.SetIcon(fyne.NewStaticResource("icon_white.png", white_trayIcon))
+	//}
+	//a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
+	a.SetIcon(fyne.NewStaticResource("icon_white.png", white_trayIcon))
 	w := a.NewWindow("GitTornado")
 	w.Resize(fyne.NewSize(600, 250))
 	w.SetFixedSize(true)
@@ -817,10 +872,10 @@ func main() {
 	// === SYSTRAY (getlantern) ===
 	go func() {
 		systray.Run(func() {
-			if len(trayIcon) > 0 {
-				systray.SetIcon(trayIcon)
-				//systray.SetTooltip("GitLab Downloader v0.71")
-			}
+			//if len(trayIcon) > 0 {
+			systray.SetIcon(trayIcon)
+			//systray.SetTooltip("GitLab Downloader v0.71")
+			//}
 			//systray.SetTooltip("GitLab Downloader")
 			systray.SetTitle("GitTornado")
 			systray.SetTooltip("GitTornado v1.0")
@@ -830,34 +885,32 @@ func main() {
 
 			go func() {
 				for range open.ClickedCh {
-
+					//1000
 					fyne.Do(func() {
-						//freshCfg, err := LoadConfig(configPath)
-						//if err == nil {
-						//	cfg = freshCfg // обновляем глобальный cfg (или локальный)
-						//}
-						//666
-						loadConfigFromFile()
-						outputText.Set("")
-						updateHint()
-						if fileExists(configPath) && cfg.SchedulerState == "running" {
-							//println(cfg.SchedulerState, "услвоие 1")
-							appendOutput(outputText, NextTime(cfg))
-						} else if fileExists(configPath) && cfg.SchedulerState == "paused" {
-							//println(cfg.SchedulerState, "услвоие 2")
-							appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик не активен. Нажмите «Старт» для возобновления.")
-							//} else if fileExists(configPath) && cfg.SchedulerState == "" {
-							//	println(cfg.SchedulerState, "услвоие 3")
-							//	appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
+						if !state_var.IsActive.Load() {
+							loadConfigFromFile()
+							outputText.Set("")
+							updateHint()
+							if fileExists(configPath) && cfg.SchedulerState == "running" {
+								appendOutput(outputText, "▶ Планировщик запущен.\n")
+								//println(cfg.SchedulerState, "услвоие 1")
+								appendOutput(outputText, NextTime(cfg))
+							} else if fileExists(configPath) && cfg.SchedulerState == "paused" {
+								//println(cfg.SchedulerState, "услвоие 2")
+								appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик не активен. Нажмите «Старт» для возобновления.")
+								//} else if fileExists(configPath) && cfg.SchedulerState == "" {
+								//	println(cfg.SchedulerState, "услвоие 3")
+								//	appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
+							}
+
+							//refreshSchedulerStatus()
+							//appendOutput(outputText, fmt.Sprintf("12222222"))
+
+							w.Show()
+							w.RequestFocus()
+							w.Canvas().Focus(nil)
+							scroll.Refresh()
 						}
-
-						//refreshSchedulerStatus()
-						//appendOutput(outputText, fmt.Sprintf("12222222"))
-
-						w.Show()
-						w.RequestFocus()
-						w.Canvas().Focus(nil)
-						scroll.Refresh()
 
 					})
 
@@ -893,9 +946,9 @@ func main() {
 	//loginEntry := NewReadOnlyEntry2()
 
 	loginEntry.SetPlaceHolder("Введите логин GitLab")
-	loginEntry.TextStyle = fyne.TextStyle{}
-	blocker := widget.NewLabel("") // перехватывает мышь
-	blocker.Resize(loginEntry.Size())
+	//loginEntry.TextStyle = fyne.TextStyle{}
+	//blocker := widget.NewLabel("") // перехватывает мышь
+	//blocker.Resize(loginEntry.Size())
 
 	passEntry := widget.NewEntry()
 	passEntry.Password = true
@@ -1577,6 +1630,8 @@ func main() {
 	//)
 	//modeCard2 := widget.NewCard("", "", modeRow)
 	//modeRadioContainer := container.NewCenter(modeCard2)
+	//1003
+
 	startDownload := func() {
 
 		lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
@@ -1602,6 +1657,12 @@ func main() {
 				f.Close()
 			}
 		}()
+		//
+		//if manualRun && isAutoRun {
+		//	println("ЗАПУСК ОБОИХ")
+		//	//cfg.LastRun = time.Now().Format(time.RFC3339)
+		//	return
+		//}
 
 		if loginEntry.Text == "" && !fileExists(configPath) {
 			dialog.ShowInformation("Ой!", "⚠️ Нет логина.", w)
@@ -1637,10 +1698,10 @@ func main() {
 		// ... проверки логина/пароля ...
 		fyne.Do(allBlock)
 		//allBlock()
-		if manualRun {
+		if state_var.ManRun.Load() {
 			appendOutput(outputText, "🟢 Запуск по запросу пользователя\n")
 			time.Sleep(500 * time.Millisecond)
-			appendOutput(outputText, "🔥 Начинаю загрузку из GitLab...\n")
+			appendOutput(outputText, "🔥 Старт процессов GitTornado...\n")
 			//NotifySuccess("раз!", "два")
 			//exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", "раз", "два").Run()
 
@@ -1676,8 +1737,8 @@ func main() {
 		if token == "" && cfg.NetboxToken != "" {
 			token = decryptedToken
 		}
-		if overridePath {
-			overridePath = false
+		if state_var.OverridePath {
+			state_var.OverridePath = false
 			path = chosenOverPath
 		} else if path == "" && cfg.SavedPlace != "" {
 			path = cfg.SavedPlace
@@ -1686,9 +1747,15 @@ func main() {
 
 		os.RemoveAll(filepath.Join(path, targetDir))
 
+		dcbool := dcCheck.Checked
+		lanbool := lanCheck.Checked
+		//println("данные на цикл: ", dcbool, lanbool)
 		//!загрузка ЦОД
-		if dcCheck.Checked {
+		state_var.IsActive.Store(true)
+		defer state_var.IsActive.Store(false)
 
+		if dcbool {
+			//dc := true
 			repoURL := "https://configs.net.rt.ru/dc/configs.git"
 			authURL := repoURL
 			dstDir := filepath.Join(path, targetDir, "ЦОД")
@@ -1738,6 +1805,7 @@ func main() {
 
 				return
 			}
+			//1007
 			if err := RemoveGitFolder(dstDir, outputText); err != nil {
 				return
 			}
@@ -1748,17 +1816,18 @@ func main() {
 			if isProgressMode {
 				//appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
-					token, outputText, scroll, manualRun); err != nil {
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcbool, false, aclCheck.Checked, parserCheck.Checked,
+					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
 						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
-						NotifyError("Oй!", "Что-то пошло нет так!")
+						NotifyError("Oй!", "Что-то пошло не так!")
 					})
 				} else {
 					if dcCheck.Checked && lanCheck.Checked {
 						fyne.Do(func() {
 							appendOutput(outputText, "🟢 Файлы ЦОД обработаны. Ожидаем файлы ЛВС.\n")
+							scroll.ScrollToBottom()
 						})
 						//fyne.Do(func() {
 						//	scroll.ScrollToBottom()
@@ -1767,7 +1836,7 @@ func main() {
 					} else {
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
-							//NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+							NotifySuccess("Ура!", "Конфиги загружены и отсортированы!")
 						})
 						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 					}
@@ -1780,9 +1849,9 @@ func main() {
 					//continue
 				}
 				//appendOutput(outputText, "Режим: Обновление текущих файлов\n")
-				if err := progdl.RunUpdateMode(dstDir, sdDst,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
-					token, outputText, scroll); err != nil {
+				if err := progdl.RunUpdateMode(dstDir, sdDst, cfg,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcbool, false, aclCheck.Checked, parserCheck.Checked,
+					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
 						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
@@ -1792,12 +1861,13 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 						fyne.Do(func() {
 							appendOutput(outputText, "🟢 Файлы ЦОД обработаны. Ожидаем файлы ЛВС.\n")
+							scroll.ScrollToBottom()
 						})
 					} else {
 						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
-							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+							NotifySuccess("Ура!", "Конфиги загружены и отсортированы!")
 						})
 					}
 				}
@@ -1805,10 +1875,11 @@ func main() {
 			}
 			if dcCheck.Checked && lanCheck.Checked {
 			} else {
-				if manualRun == false {
+				if state_var.ManRun.Load() == false {
 					cfg.LastRun = time.Now().Format(time.RFC3339)
 				} else {
-					manualRun = false
+					//state_var.ManRun.Store(false)
+					state_var.ManRun.CompareAndSwap(true, false)
 				}
 				fyne.Do(func() {
 					scroll.ScrollToBottom()
@@ -1816,9 +1887,10 @@ func main() {
 					allUnblock()
 				})
 			}
+			dcbool = false
 		}
 
-		if lanCheck.Checked {
+		if lanbool {
 
 			repoURL := "https://configs.net.rt.ru/lan/configs.git"
 			authURL := repoURL
@@ -1878,12 +1950,12 @@ func main() {
 			if isProgressMode {
 				//appendOutput(outputText, "Режим: Сохранение истории (архив по дням)\n")
 				if err := progdl.RunProgressMode(dstDir, path, cfg,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
-					token, outputText, scroll, manualRun); err != nil {
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, false, lanbool, aclCheck.Checked, parserCheck.Checked,
+					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
 						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
-						NotifyError("Oй!", "Что-то пошло нет так!")
+						NotifyError("Oй!", "Что-то пошло не так!")
 					})
 				} else {
 					//1002
@@ -1891,19 +1963,13 @@ func main() {
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
-							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+							NotifySuccess("Ура!", "Конфиги загружены и отсортированы!")
 						})
 					} else {
 						fyne.Do(func() {
-							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
-							NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
+							appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+							NotifySuccess("Ура!", "Конфиги загружены и отсортированы!")
 						})
-						//appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
-						//fyne.Do(func() {
-						//
-						//NotifySuccess("Ура!", "Конфиги обновлены и отсортированы!")
-						//})
-
 					}
 				}
 			} else {
@@ -1916,9 +1982,9 @@ func main() {
 					//continue
 				}
 				//appendOutput(outputText, "Режим: Обновление текущих файлов\n")
-				if err := progdl.RunUpdateMode(dstDir, sdDst,
-					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcCheck.Checked, lanCheck.Checked, aclCheck.Checked, parserCheck.Checked,
-					token, outputText, scroll); err != nil {
+				if err := progdl.RunUpdateMode(dstDir, sdDst, cfg,
+					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, false, lanbool, aclCheck.Checked, parserCheck.Checked,
+					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//fyne.Do(func() {
 					appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					NotifyError("Oй!", "Что-то пошло нет так!")
@@ -1944,26 +2010,41 @@ func main() {
 				}
 			}
 
-			if manualRun == false {
+			//1002
+			if state_var.ManRun.Load() == false {
 				cfg.LastRun = time.Now().Format(time.RFC3339)
 			} else {
-				manualRun = false
+				//state_var.ManRun.Store(false)
+				state_var.ManRun.CompareAndSwap(true, false)
 			}
-
+			lanbool = false
 		}
 
 		fyne.Do(func() {
+			//appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+			//NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
+			//if fileExists(configPath) && cfg.ScheduleTime != "" {
+			//	time.AfterFunc(500*time.Millisecond, func() {
+			//		// Мы уже в UI-контексте, поэтому fyne.Do НЕ нужен
+			//		appendOutput(outputText, NextTime(cfg))
+			//		fyne.Do(func() {
+			//			scroll.ScrollToBottom()
+			//		})
+			//	})
+			//}
+
 			scroll.ScrollToBottom()
 			scroll.Refresh()
 			allUnblock()
 		})
-
 	}
 
 	cloneBtn.OnTapped = func() {
-
+		//println(manualRun, "manualrun в начале процесса")
 		if !fileExists(configPath) {
-			manualRun = true
+			//manualRun = true
+			state_var.ManRun.Store(true)
+
 		}
 
 		if isAutoRun {
@@ -1972,12 +2053,32 @@ func main() {
 			return
 		}
 
+		//if isAutoRun {
+		//	println(manualRun, "manualrun в авторан")
+		//	if manualRun {
+		//		println("запущено в ручную")
+		//		cfg.LastRun = time.Now().Format(time.RFC3339)
+		//		return
+		//	} else {
+		//		isAutoRun = false
+		//		println(manualRun, "manualrun в конце выбора") // сбрасываем
+		//		go startDownload()
+		//		return
+		//	}
+		//}
+		//1009
 		// Если config.json существует И расписание настроено → спрашиваем
 		if fileExists(configPath) && cfg.ScheduleDays > 0 && cfg.ScheduleTime != "" {
 			dialog.ShowConfirm(
 				"Ой!",
 				"Планировщик настроен. Загрузить принудительно?\n",
+
 				func(confirmed bool) {
+					//state_var.ManRun.Store(true)
+					state_var.ManRun.CompareAndSwap(false, true)
+					//println(manualRun, "manualrun перед выбором")
+					//manualRun = true
+					//println(manualRun, "manualrun после выбора")
 					if confirmed {
 						// Пользователь сказал "Да" → спрашиваем про перезапись
 						dialog.ShowConfirm(
@@ -1986,29 +2087,37 @@ func main() {
 							//"Да → перезаписать\n"+
 							//"Нет → выбрать другую папку",
 							func(overwrite bool) {
-								manualRun = true
+
 								if overwrite {
 									// Да — перезаписываем в стандартную папку
 									//appendOutput(outputText, "🟢 Запуск по запросу пользователя.\n")
 									//time.Sleep(1000 * time.Millisecond)
-
+									//manualRun = true
+									//println(manualRun, "manualRun из первого выбора")
 									go startDownload()
 								} else {
-									overridePath = true
+									state_var.OverridePath = true
+									//overridePath = true
 									// Нет — выбираем папку
 									dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 										if err != nil || uri == nil {
+											state_var.ManRun.CompareAndSwap(true, false)
 											//appendOutput(outputText, "Выбор папки отменён.\n")
+											//state_var.ManRun.Store(false)
+											//manualRun = false
+											//println(manualRun, "manualrun в конце выбора")
 											return
 										}
 
 										chosenOverPath = uri.Path()
-										println(chosenOverPath)
+										//println(chosenOverPath)
 										//newPathEntry.SetText(chosenPath)
 										//chosenPath := uri.Path()
 
 										//444
 										// ← Здесь запускаем с кастомным путём
+										//manualRun = true
+										//println(manualRun, "manualRun из второго выбора")
 										go startDownload()
 									}, w)
 								}
@@ -2136,12 +2245,13 @@ func main() {
 	//}
 	//loginLabel := widget.NewLabel("1223")
 	// Сборка формы
-	locked := container.NewMax(passEntry, blocker)
+	//locked := container.NewMax(passEntry, blocker)
 	form := container.NewVBox(
+
 		//loginLabel,
 		loginEntry,
-		//passEntry,
-		locked,
+		passEntry,
+		//locked,
 		netboxEntry,
 		sortBlock,
 		passtargetButtonContainer,

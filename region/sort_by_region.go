@@ -67,6 +67,9 @@ func SortByRegion(srcDir, dstBase string, output binding.String, scroll *contain
 
 		folderName := entry.Name()
 		regionName := GetRegionName(folderName)
+		if regionName == "Другое" {
+			return nil // ← пропуск
+		}
 		targetDir := filepath.Join(dstBase, regionName) // ← ГЛАВНОЕ ИЗМЕНЕНИЕ: используем dstBase
 		//println(targetDir, "- targetDir")
 		if err := os.MkdirAll(targetDir, 0777); err != nil {
