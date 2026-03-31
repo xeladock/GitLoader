@@ -172,6 +172,7 @@ func AppendToOutput(output binding.String, scroll *container.Scroll, text string
 	})
 
 }
+
 func copyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {

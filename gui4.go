@@ -251,7 +251,7 @@ func LoadConfig(path string) (*conf.AppConfig, error) {
 
 // восстановление боксов после переоткрытия
 func loadConfigFromFile() {
-
+	configPath := getConfigPath()
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return
@@ -396,93 +396,6 @@ func (e *ReadOnlyEntry) Refresh() {
 func (e *ReadOnlyEntry) TypedRune(r rune)           {}
 func (e *ReadOnlyEntry) TypedKey(ev *fyne.KeyEvent) {}
 
-//func (e *ReadOnlyEntry) Focusable() bool {
-//	return false // ← главное: поле НЕ фокусируемо
-//}
-//
-//func (e *ReadOnlyEntry) FocusGained() {
-//	// Ничего не делаем — курсор не появляется
-//}
-
-// 2
-//type ReadOnlyEntry2 struct {
-//	widget.Entry
-//	editable bool
-//}
-//
-//func NewReadOnlyEntry2() *ReadOnlyEntry2 {
-//	e := &ReadOnlyEntry2{}
-//	e.ExtendBaseWidget(e)
-//	e.editable = false // по умолчанию заблокировано
-//	return e
-//}
-//
-//func (e *ReadOnlyEntry2) Focusable() bool {
-//	return e.editable
-//}
-//
-//func (e *ReadOnlyEntry2) Tapped(*fyne.PointEvent) {
-//	if !e.editable {
-//		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
-//			c.Focus(nil)
-//		}
-//		return
-//	}
-//	e.Entry.Tapped(nil)
-//}
-//
-//func (e *ReadOnlyEntry2) FocusGained() {
-//	if !e.editable {
-//		// Снимаем фокус мгновенно
-//		fyne.CurrentApp().Driver().CanvasForObject(e).Focus(nil)
-//		return
-//	}
-//	e.Entry.FocusGained()
-//}
-//
-//func (e *ReadOnlyEntry2) TypedRune(r rune) {
-//	if e.editable {
-//		e.Entry.TypedRune(r)
-//	}
-//}
-//
-//func (e *ReadOnlyEntry2) TypedKey(ev *fyne.KeyEvent) {
-//	if e.editable {
-//		e.Entry.TypedKey(ev)
-//	}
-//}
-//
-//func (e *ReadOnlyEntry2) SetEditable(editable bool) {
-//	e.editable = editable
-//	e.Refresh()
-//
-//	// Если отключили редактирование — сразу снимаем фокус
-//	if !editable {
-//		if c := fyne.CurrentApp().Driver().CanvasForObject(e); c != nil {
-//			c.Focus(nil)
-//		}
-//	}
-//}
-
-// Метод переключения режима
-//func (e *ReadOnlyEntry2) SetEditable(editable bool) {
-//	e.editable = editable
-//	e.Refresh()
-//}
-
-//2
-
-//type CleanLightTheme struct{}
-
-//	func (CleanLightTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
-//		if n == theme.ColorNameInputBackground || n == theme.ColorNameDisabled {
-//			return color.White // белый фон у полей и отключённых полей
-//		}
-//		if n == theme.ColorNameDisabled {
-//			return color.NRGBA{80, 80, 80, 255} // тёмно-серый текст (читаемо!)
-//		}
-//		return theme.LightTheme{}.Color(n, v)
-//	}
 type hiddenTheme struct{ fyne.Theme }
 
 func (hiddenTheme) ScrollBarSize() int { return 0 }
@@ -500,7 +413,26 @@ func NotifyError(title, message string) {
 	//cmd.Run()
 }
 
-const configPath = "config.json"
+// 1014
+func getConfigPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// Если не удалось получить домашнюю папку — fallback в текущую директорию
+		return "config.json"
+	}
+
+	configDir := filepath.Join(home, ".config", "gittornado")
+
+	// Создаём папку, если её нет
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		// Если не смогли создать — fallback
+		return "config.json"
+	}
+
+	return filepath.Join(configDir, "config.json")
+}
+
+//const configPath = "config.json"
 
 func NextTime(cfg *conf.AppConfig) string {
 	if cfg == nil {
@@ -595,89 +527,6 @@ func NextTime(cfg *conf.AppConfig) string {
 	)
 }
 
-//func NextTime(cfg *conf.AppConfig) string {
-//	if cfg == nil {
-//		return "Конфигурация не загружена"
-//	}
-//	//println("12345")
-//	if cfg.ScheduleDays <= 0 || cfg.ScheduleTime == "" {
-//		return "Планировщик не настроен"
-//	}
-//
-//	// Парсим scheduleTime (формат "HH:MM")
-//	parts := strings.Split(cfg.ScheduleTime, ":")
-//	if len(parts) != 2 {
-//		return "Неверный формат времени в настройках"
-//	}
-//
-//	hour, errH := strconv.Atoi(parts[0])
-//	minute, errM := strconv.Atoi(parts[1])
-//	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-//		return "Некорректное время в настройках"
-//	}
-//
-//	now := time.Now()
-//	loc := now.Location()
-//
-//	// Рассчитываем время следующего запуска
-//	var nextRun time.Time
-//
-//	if cfg.LastRun == "" {
-//		// Первый запуск — сегодня в указанное время
-//		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
-//		if now.After(today) || now.Equal(today) {
-//			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
-//		} else {
-//			nextRun = today
-//		}
-//	} else {
-//		// Есть LastRun — считаем от него
-//		last, err := time.Parse(time.RFC3339, cfg.LastRun)
-//		if err != nil {
-//			return "Ошибка парсинга LastRun"
-//		}
-//
-//		nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
-//		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
-//
-//		// Если nextRun в прошлом — добавляем дни
-//		for !nextRun.After(now) {
-//			nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
-//		}
-//	}
-//
-//	delay := time.Until(nextRun)
-//
-//	hours := int(delay.Hours())
-//	minutes := int(delay.Minutes()) % 60
-//
-//	//println(
-//	//	"Следующий запуск: %s в %s. (через %d ч. %d мин.)",
-//	//	nextRun.Format("02.01.2006"),
-//	//	nextRun.Format("15:04"),
-//	//	hours,
-//	//	minutes,
-//	//)
-//	return fmt.Sprintf("▶ Планировщик запущен.\n"+
-//		"🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)",
-//		nextRun.Format("02.01.2006"),
-//		nextRun.Format("15:04"),
-//		hours,
-//		minutes,
-//	)
-//}
-
-//const lockFileName = "gittornado.lock"
-
-//	func isProcessRunning(pid int) bool {
-//		p, err := os.FindProcess(pid)
-//		if err != nil {
-//			return false
-//		}
-//		// Нулевой сигнал — проверка существования процесса
-//		err = p.Signal(syscall.Signal(0))
-//		return err == nil
-//	}
 func isProcessRunning(pid int) bool {
 	p, err := os.FindProcess(pid)
 	if err != nil {
@@ -705,25 +554,79 @@ func killProcess(pid int) error {
 //	}
 //
 // 1001
+type NoContextMenuEntry struct {
+	widget.Entry
+}
+
+func NewNoContextMenuEntry() *NoContextMenuEntry {
+	e := &NoContextMenuEntry{}
+	e.ExtendBaseWidget(e)
+	//e.MultiLine = true
+	//e.Wrapping = fyne.TextWrapWord
+	//e.TextStyle = fyne.TextStyle{Monospace: true}
+	return e
+}
+
+// Основной способ отключения контекстного меню в v2.7.2
+func (e *NoContextMenuEntry) TappedSecondary(pe *fyne.PointEvent) {
+	// Ничего не делаем — меню не появляется
+}
+
+// На всякий случай перехватываем и MouseDown
+//
+//	func (e *NoContextMenuEntry) MouseDown(ev *desktop.MouseEvent) {
+//		if ev.Button == desktop.RightMouseButton {
+//			return
+//		}
+//		e.Entry.MouseDown(ev)
+//	}
+
+// подбери под ширину твоего окна (примерно 120-150)
+
+func errorlog(output binding.String, scroll *container.Scroll, text string) {
+
+	const maxLineWidth = 115
+
+	fyne.Do(func() {
+		current, _ := output.Get()
+
+		lines := strings.Split(text, "\n")
+		var sb strings.Builder
+
+		for _, line := range lines {
+			if len(line) > maxLineWidth {
+				// Переносим по словам, стараясь не разрывать слово
+				for len(line) > maxLineWidth {
+					// Ищем последний пробел в пределах допустимой длины
+					cut := line[:maxLineWidth]
+					lastSpace := strings.LastIndex(cut, " ")
+
+					if lastSpace > 10 { // если нашли хороший пробел
+						sb.WriteString(cut[:lastSpace] + "\n")
+						line = cut[lastSpace+1:] + line[maxLineWidth:]
+					} else {
+						// Нет хорошего пробела — режем жёстко с дефисом
+						sb.WriteString(line[:maxLineWidth-1] + "-\n")
+						line = line[maxLineWidth-1:]
+					}
+				}
+				sb.WriteString(line + "\n")
+			} else {
+				sb.WriteString(line + "\n")
+			}
+		}
+
+		newText := current + sb.String()
+		output.Set(newText)
+
+		scroll.ScrollToBottom()
+		scroll.Refresh()
+	})
+}
+
 func main() {
 	//println(state_var.ManRun.Load())
-	//
-	//if state_var.ManRun.CompareAndSwap(true, false) {
-	//	// молча отменяем — без уведомления и ошибки
-	//	println(state_var.ManRun.Load())
-	//
-	//}
-	//
-	//println(state_var.ManRun.Load())
-	//
-	//if state_var.ManRun.Load() == true {
-	//}
-
-	//NotifySuccess("1", "2")
-
-	//const configPath = "config.json"
-	//var cfg *conf.AppConfig
-	//var err error
+	configPath := getConfigPath()
 	cfg, err := LoadConfig(configPath)
 	//cfg2, err := LoadDoubleEncryptedConfig("config.secure", crypt.SecretKey, crypt.SecretKey)
 	if err != nil {
@@ -857,7 +760,8 @@ func main() {
 	//a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
 	a.SetIcon(fyne.NewStaticResource("icon_white.png", white_trayIcon))
 	w := a.NewWindow("GitTornado")
-	w.Resize(fyne.NewSize(600, 250))
+	//860
+	w.Resize(fyne.NewSize(760, 250))
 	w.SetFixedSize(true)
 	w.CenterOnScreen()
 
@@ -885,7 +789,7 @@ func main() {
 
 			go func() {
 				for range open.ClickedCh {
-					//1000
+					//1100
 					fyne.Do(func() {
 						if !state_var.IsActive.Load() {
 							loadConfigFromFile()
@@ -942,15 +846,19 @@ func main() {
 	// Поля ввода
 	//output := NewReadOnlyEntry()
 	//4444
-	loginEntry := widget.NewEntry()
+	//loginEntry := widget.NewEntry()
 	//loginEntry := NewReadOnlyEntry2()
-
+	loginEntry := NewNoContextMenuEntry()
 	loginEntry.SetPlaceHolder("Введите логин GitLab")
+	//loginEntry.SetText("") // очищаем возможный мусор
+	//loginEntry.Refresh()
+	//loginEntry.Bind(loginBinding)
 	//loginEntry.TextStyle = fyne.TextStyle{}
 	//blocker := widget.NewLabel("") // перехватывает мышь
 	//blocker.Resize(loginEntry.Size())
 
-	passEntry := widget.NewEntry()
+	//passEntry := widget.NewEntry()
+	passEntry := NewNoContextMenuEntry()
 	passEntry.Password = true
 	passEntry.SetPlaceHolder("Введите пароль GitLab")
 	//passEntry.TextStyle = fyne.TextStyle{}
@@ -961,7 +869,9 @@ func main() {
 	//netboxEntry.Disable()
 
 	//выбор папки
-	savePathEntry := widget.NewEntry()
+
+	//savePathEntry := widget.NewEntry()
+	savePathEntry := NewNoContextMenuEntry()
 	savePathEntry.SetPlaceHolder("Папка сохранения. По-умолчанию - текущая")
 	//888
 	browseBtn := widget.NewButton("Обзор", func() {
@@ -994,32 +904,46 @@ func main() {
 		}, w)
 	})
 	//browseBtn.Importance = widget.WarningImportance
-
-	scheduleEntry := widget.NewEntry()
+	scheduleEntry := NewNoContextMenuEntry()
+	//scheduleEntry := widget.NewEntry()
 	scheduleEntry.SetPlaceHolder("Интервал (дней, 1–31). По-умолчанию - 1")
 	scheduleEntry.Resize(fyne.NewSize(140, 40))
 	// Поле выбора времени
-	timeEntry := widget.NewEntry()
+	timeEntry := NewNoContextMenuEntry()
+	//timeEntry := widget.NewEntry()
 	timeEntry.SetPlaceHolder("Время обновления (HH:MM). По-умолчанию - 00:00")
 	//aaaa
 	outputText = binding.NewString()
+	//outputText.Wrapping = fyne.TextWrapWord
 	//output := widget.NewMultiLineEntry()
-
+	//1012
+	//output := widget.NewMultiLineEntry()
 	output := NewReadOnlyEntry()
 	output.MultiLine = true
 	//output.Disable()
 
 	output.Bind(outputText)
 	//output.Wrapping = fyne.TextWrapWord
+	//output.TextStyle = fyne.TextStyle{Monospace: false}
+	//output.Wrapping = fyne.TextWrapWord
 	//output.SetMinRowsVisible(15)
 	//scroll := container.NewVScroll(output)
 	scroll = container.NewVScroll(output)
+	//fixed := container.NewMax(scroll)
+	//fixed := container.NewBorder(nil, nil, nil, nil, scroll)
+	//fixed.SetMinSize(fyne.NewSize(0, 250))
+	//scroll.SetHorizontalScroll(false)
+	//scroll.Direction = container.ScrollVerticalOnly
 	//scroll.SetMinSize(fyne.NewSize(600, 300))
 	//scroll.SetMinSize(fyne.NewSize(600, 300))  // твой размер
 	//scroll.Resize(fyne.NewSize(600, 300))
 	//scroll.SetOverlayScrollbars(false)
+	//1025
+	scroll.SetMinSize(fyne.NewSize(0, 250))
+	//scroll.Size()
 
-	scroll.SetMinSize(fyne.NewSize(760, 250))
+	//fixed := container.NewBorder(nil, nil, nil, nil, scroll)
+	//fixed.SetMinSize(fyne.NewSize(760, 250))
 	//scroll.Resize(fyne.NewSize(460, 250))
 	output.SetMinRowsVisible(15)
 	//scroll.Offset = fyne.NewPos(0, 0)
@@ -1361,8 +1285,10 @@ func main() {
 		}
 		cfg.ScheduleDays = days
 		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
+		//1015
+		configPath := getConfigPath()
 		if err := saveConfig(cfg, configPath); err != nil {
-			appendOutput(outputText, fmt.Sprintf("❌ Ошибка сохранения: %v", err))
+			errorlog(outputText, scroll, fmt.Sprintf("❌ Ошибка сохранения: %v", err, "\n"))
 		} else {
 			loginEntry.SetText("")
 			loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
@@ -1416,12 +1342,14 @@ func main() {
 	}
 
 	updateButtonState()
-	outputView := widget.NewLabelWithData(outputText)
+	//outputView := widget.NewLabelWithData(outputText)
 	//сбросить конфигу
+	//1016
 	resetConfig := func() {
 
-		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
-			outputView.SetText(outputView.Text + "\n❌ Ошибка сброса настроек: " + err.Error())
+		if err := os.RemoveAll(filepath.Dir(configPath)); err != nil {
+			errorlog(outputText, scroll, "❌ Ошибка сброса настроек: "+err.Error()+"\n")
+			//outputView.SetText(outputView.Text + "\n❌ Ошибка сброса настроек: " + err.Error())
 			return
 		}
 		//loginEntry.SetEditable(true)
@@ -1781,25 +1709,25 @@ func main() {
 
 				switch {
 				case strings.Contains(string(outputBytes), "Authentication failed"):
-					appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab\n")
+					appendOutput(outputText, "Ошибка: неверный логин или пароль GitLab.\n")
 					os.RemoveAll(filepath.Join(path, targetDir))
 				case strings.Contains(string(outputBytes), "not found"):
-					appendOutput(outputText, "Ошибка: git не найден в PATH\n")
+					appendOutput(outputText, "Ошибка: git не найден.\n")
 
 				case strings.Contains(string(outputBytes), "Could not resolve host"):
-					appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен\n")
+					appendOutput(outputText, "Ошибка: нет интернета или сервер недоступен.\n")
 
 				case strings.Contains(string(outputBytes), "Repository not found"):
-					appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа\n")
+					appendOutput(outputText, "Ошибка: репозиторий не найден или нет доступа.\n")
 
 				case err != nil && (os.IsPermission(err) ||
 					strings.Contains(strings.ToLower(err.Error()), "permission denied") ||
 					strings.Contains(strings.ToLower(err.Error()), "access denied") ||
 					strings.Contains(strings.ToLower(err.Error()), "read-only file system")):
-					appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
+					appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку.\n")
 
 				default:
-					appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
+					errorlog(outputText, scroll, "Ошибка git clone: "+err.Error()+"\n")
 				}
 				fyne.Do(allUnblock)
 
@@ -1820,7 +1748,7 @@ func main() {
 					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
-						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						errorlog(outputText, scroll, "Ошибка выполнения: "+err.Error()+"\n")
 						NotifyError("Oй!", "Что-то пошло не так!")
 					})
 				} else {
@@ -1854,7 +1782,7 @@ func main() {
 					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
-						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						errorlog(outputText, scroll, "Ошибка выполнения: "+err.Error()+"\n")
 						NotifyError("Oй!", "Что-то пошло не так!")
 					})
 				} else {
@@ -1933,7 +1861,7 @@ func main() {
 					appendOutput(outputText, "Ошибка: нет прав на запись в целевую папку\n")
 
 				default:
-					appendOutput(outputText, "Ошибка git clone: "+err.Error()+"\n")
+					errorlog(outputText, scroll, "Ошибка git clone: "+err.Error()+"\n")
 				}
 				//_ = RemoveGitFolder(dstDir, outputText)
 				fyne.Do(allUnblock)
@@ -1954,7 +1882,7 @@ func main() {
 					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 					fyne.Do(func() {
-						appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
+						errorlog(outputText, scroll, "Ошибка выполнения: "+err.Error()+"\n")
 						NotifyError("Oй!", "Что-то пошло не так!")
 					})
 				} else {
@@ -1986,8 +1914,8 @@ func main() {
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, false, lanbool, aclCheck.Checked, parserCheck.Checked,
 					token, outputText, scroll, state_var.ManRun.Load()); err != nil {
 					//fyne.Do(func() {
-					appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
-					NotifyError("Oй!", "Что-то пошло нет так!")
+					errorlog(outputText, scroll, "Ошибка выполнения: "+err.Error()+"\n")
+					NotifyError("Oй!", "Что-то пошло не так!")
 					//})
 					//appendOutput(outputText, "Ошибка выполнения: "+err.Error()+"\n")
 				} else {
@@ -2261,6 +2189,7 @@ func main() {
 
 		cloneButtonContainer,
 		scroll,
+		//fixed,
 		//saveButtonContainer := container.NewHBox(layout.NewSpacer(),  saveBtn,  startPauseBtn  )
 		saveButtonContainer,
 		savePathContainer,
@@ -2268,8 +2197,10 @@ func main() {
 		timeEntry,
 		//testBtn,
 	)
-
+	//root := container.NewBorder(nil, nil, nil, nil, form)
+	//form = container.NewBorder(nil, nil, nil, nil, scroll)
 	w.SetContent(form)
+	//w.SetFixedSize(true)
 	w.ShowAndRun()
 	form.Refresh()
 	w.Canvas().Refresh(form)
