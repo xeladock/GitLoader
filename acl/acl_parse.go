@@ -47,13 +47,19 @@ var aclPlatforms2 = map[string]struct{}{
 	"B4COM BCOM-OS-DC":      {},
 	"EdgeCore":              {},
 	"IBM/Lenovo Network OS": {},
-	"HP ProCurve":           {},
-	"Dell Networking OS":    {},
-	"Juniper Junos":         {},
-	"Cisco IOS XR":          {},
-	"Cisco PIX":             {},
-	"QTECH NOS":             {},
-	"Raisecom":              {},
+	//"IBM_Lenovo Network OS": {},
+	"HP ProCurve":        {},
+	"HPE OfficeConnect":  {},
+	"HPE Comware 1910":   {},
+	"HPE Comware":        {},
+	"3Com Comware 1910":  {},
+	"Huawei VRP 2403":    {},
+	"Dell Networking OS": {},
+	"Juniper Junos":      {},
+	"Cisco IOS XR":       {},
+	"Cisco PIX":          {},
+	"QTECH NOS":          {},
+	"Raisecom":           {},
 }
 
 func SortFilesByACL(
@@ -116,7 +122,7 @@ func SortFilesByACL(
 			if err != nil || platform == "" {
 				return nil
 			} else if IsACLPlatform(platform) {
-
+				platform = strings.ReplaceAll(platform, "/", "_")
 				targetDir := filepath.Join(dstBase, platform)
 				if err := os.MkdirAll(targetDir, 0777); err != nil {
 					return err
@@ -144,7 +150,9 @@ func SortFilesByACL(
 		}
 	}
 	//println(srcDir, "- srcdir удаление")
+
 	os.RemoveAll(filepath.Dir(srcDir))
+	AppendToOutput(output, scroll, "\n")
 	return nil
 }
 

@@ -16,7 +16,8 @@ import (
 )
 
 type UpdateHintFunc func()
-type stoprun bool
+
+//type stoprun bool
 
 // Start запускает планировщик
 // cfgPath — путь к config.json (чтобы сохранить LastRun)

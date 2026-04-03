@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"configtool.local/nb"
 	"fyne.io/fyne/v2"
@@ -19,11 +20,12 @@ func SortFilesByPlatform(
 	scroll *container.Scroll,
 	dcbool, lanbool bool,
 ) error {
-	println("sort by platform", dcbool, lanbool)
+	//println("sort by platform", dcbool, lanbool)
 	typeDirs := []string{}
 	//println(dstBase, "- dstbase", srcDir, "- srcdir")
 	if dcbool {
 		os.RemoveAll(dstBase)
+		time.Sleep(500 * time.Millisecond)
 		os.MkdirAll(dstBase, 0755)
 		//os.RemoveAll(filepath.Join(dstBase, "ЦОД"))
 		typeDirs = append(typeDirs, "ЦОД")
@@ -33,14 +35,15 @@ func SortFilesByPlatform(
 	if lanbool {
 		//println(dstBase, "очистка lan для платформы")
 		os.RemoveAll(dstBase)
+		time.Sleep(500 * time.Millisecond)
 		os.MkdirAll(dstBase, 0755)
 		//os.RemoveAll(filepath.Join(dstBase, "ЛВС"))
 		typeDirs = append(typeDirs, "ЛВС")
 		//lanbool = false
 	}
 
-	//allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
-	allowedRoots := []string{"DV"}
+	allowedRoots := []string{"PR", "DV", "SZ", "CE", "UR", "UK", "SI"}
+	//allowedRoots := []string{"DV"}
 
 	for _, t := range typeDirs {
 		//println(t, srcDir)
@@ -103,6 +106,7 @@ func SortFilesByPlatform(
 	}
 	//println(srcDir, "- srcdir удаление")
 	os.RemoveAll(filepath.Dir(srcDir))
+	AppendToOutput(output, scroll, "\n")
 	return nil
 }
 

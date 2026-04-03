@@ -15,9 +15,11 @@ import (
 
 	conf "configtool.local/conf"
 	"configtool.local/crypt"
+	"configtool.local/gloss"
 	"configtool.local/progdl"
 	"configtool.local/sound"
 	"configtool.local/state_var"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	//"configtool.local/start_stop"
 	// "configtool.local/window_action" // removed, using systray instead
@@ -107,40 +109,52 @@ var isAutoRun = false // ← флаг: запущено ли по расписа
 //	return os.WriteFile(path, []byte(encryptedAll), 0600)
 //}
 
-//func LoadDoubleEncryptedConfig(path string, internalKey, externalKey []byte) (*conf.AppConfig, error) {
-//	data, err := os.ReadFile(path)
-//	if err != nil {
-//		return nil, err
-//	}
+//	func LoadDoubleEncryptedConfig(path string, internalKey, externalKey []byte) (*conf.AppConfig, error) {
+//		data, err := os.ReadFile(path)
+//		if err != nil {
+//			return nil, err
+//		}
 //
-//	// 1. Расшифровываем внешний слой
-//	jsonStr, err := crypt.Decrypt(string(data), externalKey)
-//	if err != nil {
-//		return nil, err
-//	}
+//		// 1. Расшифровываем внешний слой
+//		jsonStr, err := crypt.Decrypt(string(data), externalKey)
+//		if err != nil {
+//			return nil, err
+//		}
 //
-//	// 2. Парсим JSON
-//	cfg := &conf.AppConfig{}
-//	if err := json.Unmarshal([]byte(jsonStr), cfg); err != nil {
-//		return nil, err
-//	}
+//		// 2. Парсим JSON
+//		cfg := &conf.AppConfig{}
+//		if err := json.Unmarshal([]byte(jsonStr), cfg); err != nil {
+//			return nil, err
+//		}
 //
-//	// 3. Расшифровываем внутренние поля
-//	decPass, err := crypt.Decrypt(cfg.GitLabPass, internalKey)
-//	if err != nil {
-//		return nil, err
-//	}
-//	decToken, err := crypt.Decrypt(cfg.NetboxToken, internalKey)
-//	if err != nil {
-//		return nil, err
-//	}
+//		// 3. Расшифровываем внутренние поля
+//		decPass, err := crypt.Decrypt(cfg.GitLabPass, internalKey)
+//		if err != nil {
+//			return nil, err
+//		}
+//		decToken, err := crypt.Decrypt(cfg.NetboxToken, internalKey)
+//		if err != nil {
+//			return nil, err
+//		}
 //
-//	cfg.GitLabPass = decPass
-//	cfg.NetboxToken = decToken
+//		cfg.GitLabPass = decPass
+//		cfg.NetboxToken = decToken
 //
-//	return cfg, nil
-//}
+//		return cfg, nil
+//	}
+func openFolderInExplorer(path string) {
+	if path == "" {
+		//appendOutput(outputText, "⚠️ Путь для открытия не задан.\n")
+		return
+	}
 
+	// Для Linux используем xdg-open — он открывает папку в проводнике по умолчанию
+	cmd := exec.Command("xdg-open", path)
+
+	if err := cmd.Start(); err != nil {
+		//appendOutput(outputText, "❌ Не удалось открыть папку: "+err.Error()+"\n")
+	}
+}
 func isValidTime(s string) bool {
 	if len(s) != 5 {
 		return false
@@ -763,6 +777,7 @@ func main() {
 	//860
 	w.Resize(fyne.NewSize(760, 250))
 	w.SetFixedSize(true)
+	w.SetOnClosed(nil)
 	w.CenterOnScreen()
 
 	// Сворачивание в трей по крестику
@@ -791,6 +806,7 @@ func main() {
 				for range open.ClickedCh {
 					//1100
 					fyne.Do(func() {
+						println(state_var.IsActive.Load())
 						if !state_var.IsActive.Load() {
 							loadConfigFromFile()
 							outputText.Set("")
@@ -814,6 +830,8 @@ func main() {
 							w.RequestFocus()
 							w.Canvas().Focus(nil)
 							scroll.Refresh()
+						} else {
+							w.Show()
 						}
 
 					})
@@ -903,6 +921,7 @@ func main() {
 			//appendOutput(outputText, fmt.Sprintf("Папка сохранения выбрана: %s\n", chosenPath))
 		}, w)
 	})
+
 	//browseBtn.Importance = widget.WarningImportance
 	scheduleEntry := NewNoContextMenuEntry()
 	//scheduleEntry := widget.NewEntry()
@@ -1285,10 +1304,9 @@ func main() {
 		}
 		cfg.ScheduleDays = days
 		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
-		//1015
 		configPath := getConfigPath()
 		if err := saveConfig(cfg, configPath); err != nil {
-			errorlog(outputText, scroll, fmt.Sprintf("❌ Ошибка сохранения: %v", err, "\n"))
+			errorlog(outputText, scroll, fmt.Sprintf("❌ Ошибка сохранения: %v", err))
 		} else {
 			loginEntry.SetText("")
 			loginEntry.SetPlaceHolder("✅ Сохранено в файл настроек.")
@@ -1344,14 +1362,14 @@ func main() {
 	updateButtonState()
 	//outputView := widget.NewLabelWithData(outputText)
 	//сбросить конфигу
-	//1016
 	resetConfig := func() {
 
-		if err := os.RemoveAll(filepath.Dir(configPath)); err != nil {
+		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			errorlog(outputText, scroll, "❌ Ошибка сброса настроек: "+err.Error()+"\n")
 			//outputView.SetText(outputView.Text + "\n❌ Ошибка сброса настроек: " + err.Error())
 			return
 		}
+		cfg := &conf.AppConfig{}
 		//loginEntry.SetEditable(true)
 		//println("login editable in reset")
 		saveBtn.SetText("Сохранить")
@@ -1795,6 +1813,7 @@ func main() {
 						//appendOutput(outputText, "Все операции для ЦОД выполнены!\n")
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЦОД выполнены!\n")
+							scroll.ScrollToBottom()
 							NotifySuccess("Ура!", "Конфиги загружены и отсортированы!")
 						})
 					}
@@ -1891,11 +1910,13 @@ func main() {
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
+							scroll.ScrollToBottom()
 							NotifySuccess("Ура!", "Конфиги загружены и отсортированы!")
 						})
 					} else {
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+							scroll.ScrollToBottom()
 							NotifySuccess("Ура!", "Конфиги загружены и отсортированы!")
 						})
 					}
@@ -1922,6 +1943,7 @@ func main() {
 					if dcCheck.Checked && lanCheck.Checked {
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЛВС и ЦОД выполнены!\n")
+							scroll.ScrollToBottom()
 							NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
 						})
 						//appendOutput(outputText, "Все операции для ЛВС и ЦОД выполнены!\n")
@@ -1929,6 +1951,7 @@ func main() {
 
 						fyne.Do(func() {
 							appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
+							scroll.ScrollToBottom()
 							NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
 							//exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "2000", "1", "2").Run()
 							//NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
@@ -2200,9 +2223,39 @@ func main() {
 	//root := container.NewBorder(nil, nil, nil, nil, form)
 	//form = container.NewBorder(nil, nil, nil, nil, scroll)
 	w.SetContent(form)
+	shortcut := &desktop.CustomShortcut{
+		KeyName:  fyne.KeyF,
+		Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift,
+	}
+
+	w.Canvas().AddShortcut(shortcut, func(s fyne.Shortcut) {
+		//config_files_clear /
+		openFolderInExplorer(cfg.SavedPlace)
+		//println("проверка")
+	})
+
+	closeshortcut := &desktop.CustomShortcut{
+		KeyName:  fyne.KeyEscape,
+		Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift,
+	}
+
+	w.Canvas().AddShortcut(closeshortcut, func(s fyne.Shortcut) {
+		w.Hide()
+	})
+
+	openshortcut := &desktop.CustomShortcut{
+		KeyName:  fyne.KeyF1,
+		Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift,
+	}
+
+	w.Canvas().AddShortcut(openshortcut, func(s fyne.Shortcut) {
+		gloss.ShowGlossary(w)
+	})
+
 	//w.SetFixedSize(true)
 	w.ShowAndRun()
 	form.Refresh()
 	w.Canvas().Refresh(form)
+	//	e4c732fd39ceed92b1e87931e78db912d71c33d3
 
 }

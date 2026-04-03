@@ -179,13 +179,13 @@ func RunProgressMode(
 	return nil
 }
 
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false // ошибка или файла нет
-	}
-	return !info.IsDir() // существует и это файл
-}
+//func fileExists(path string) bool {
+//	info, err := os.Stat(path)
+//	if err != nil {
+//		return false // ошибка или файла нет
+//	}
+//	return !info.IsDir() // существует и это файл
+//}
 
 //scheduler.ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false) // ← true: печатаем в следующем цикле
 

@@ -39,16 +39,16 @@ func GetRegionName(folderName string) string {
 		}
 	}
 
-	return "Другое" // на всякий случай
+	return "" // на всякий случай
 }
 
 func SortByRegion(srcDir, dstBase string, output binding.String, scroll *container.Scroll, dcCheck, lanCheck bool) error {
 	entries, err := os.ReadDir(srcDir)
 
-	println(dstBase, "- dstbase", srcDir, "- srcdir")
+	//println(dstBase, "1 - dstbase", srcDir, "- srcdir в sort_by_region")
 
 	_ = os.RemoveAll(dstBase)
-
+	//println("2")
 	if err != nil {
 		Append(output, scroll, fmt.Sprintf("Ошибка чтения папки %s: %v\n", srcDir, err))
 		return err
@@ -59,41 +59,47 @@ func SortByRegion(srcDir, dstBase string, output binding.String, scroll *contain
 		Append(output, scroll, fmt.Sprintf("Ошибка создания папки %s: %v\n", dstBase, err))
 		return err
 	}
-
+	//println(dstBase, " 3 - пересоздали папку")
 	for _, entry := range entries {
+		//println(entry)
 		if !entry.IsDir() {
 			continue // пропускаем файлы в корне (если есть)
 		}
-
+		//println("4")
 		folderName := entry.Name()
+		//println(folderName)
 		regionName := GetRegionName(folderName)
-		if regionName == "Другое" {
-			return nil // ← пропуск
+		//println(regionName)
+		if regionName == "" {
+			continue // ← это правильно! Продолжаем обход, просто пропускаем файл
 		}
+		//println("5")
 		targetDir := filepath.Join(dstBase, regionName) // ← ГЛАВНОЕ ИЗМЕНЕНИЕ: используем dstBase
-		//println(targetDir, "- targetDir")
+		//println(targetDir, "- targetDir в sort by region")
 		if err := os.MkdirAll(targetDir, 0777); err != nil {
 			Append(output, scroll, fmt.Sprintf("Ошибка создания папки %s: %v\n", regionName, err))
 			continue
 		}
-
+		println("6")
 		// Копируем всё содержимое папки
 
 		srcPath := filepath.Join(srcDir, folderName)
-		//println(srcPath, "-srcPath")
+		//println(srcPath, "7 -srcPath в sort by region")
 		if err := copyDirContents(srcPath, targetDir, output); err != nil {
 			Append(output, scroll, fmt.Sprintf("Ошибка копирования %s: %v\n", folderName, err))
 		} else {
 			Append(output, scroll, fmt.Sprintf("[%s] ← %s\n", regionName, folderName))
+			//println("8")
 		}
 	}
 	if err == nil {
 		os.RemoveAll(filepath.Dir(srcDir))
+		//println("9")
 		//Append(output, "Исходная папка configs удалена.\n")
 	}
-
+	//e4c732fd39ceed92b1e87931e78db912d71c33d3
 	//Append(output, "\nСортировка по регионам завершена успешно.\n")
-
+	Append(output, scroll, "\n")
 	return nil
 }
 
