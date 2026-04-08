@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -67,6 +68,7 @@ var (
 	//cloneBtn       *widget.Button
 	//cancel         chan struct{}
 	chosenOverPath string
+	stateMutex     sync.Mutex
 	//schedulerRunning bool
 	// ... другие виджеты, если нужноasIsCheck
 )
@@ -446,8 +448,7 @@ func getConfigPath() string {
 	return filepath.Join(configDir, "config.json")
 }
 
-//const configPath = "config.json"
-
+// const configPath = "config.json"
 func NextTime(cfg *conf.AppConfig) string {
 	if cfg == nil {
 		return "Конфигурация не загружена"
@@ -456,59 +457,60 @@ func NextTime(cfg *conf.AppConfig) string {
 		return "Планировщик не настроен"
 	}
 
-	// Парсим scheduleTime (формат "HH:MM")
 	parts := strings.Split(cfg.ScheduleTime, ":")
-
 	if len(parts) != 2 {
 		return "Неверный формат времени в настройках"
 	}
 
-	hour, errH := strconv.Atoi(parts[0])
-	minute, errM := strconv.Atoi(parts[1])
-	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-		//cfg.SchedulerState = "paused"
-		//_ = saveConfig(cfg, configPath)
+	hour, _ := strconv.Atoi(parts[0])
+	minute, _ := strconv.Atoi(parts[1])
+
+	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
 		return "Некорректное время в настройках"
 	}
 
 	now := time.Now()
 	loc := now.Location()
 
-	// Рассчитываем время следующего запуска
+	//fmt.Printf("DEBUG NextTime: now=%s, ScheduleTime=%s, LastRun=%s\n",
+	//	now.Format("15:04"), cfg.ScheduleTime, cfg.LastRun)
+
 	var nextRun time.Time
 
-	if cfg.LastRun == "" {
-		// Первый запуск — сегодня в указанное время
+	// ЖЁСТКОЕ условие: считаем первый запуск, если LastRun пустой ИЛИ очень свежий (меньше 30 минут)
+	if cfg.LastRun == "" ||
+		cfg.LastRun == "0001-01-01T00:00:00Z" ||
+		time.Since(parseLastRun(cfg.LastRun)) < 30*time.Minute {
+
 		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
-		if now.After(today) || now.Equal(today) {
-			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
-		} else {
+
+		if now.Before(today) {
 			nextRun = today
+			//fmt.Println("DEBUG: Первый запуск → СЕГОДНЯ")
+		} else {
+			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+			//fmt.Println("DEBUG: Первый запуск → ЗАВТРА")
 		}
 	} else {
-		// Есть LastRun — считаем от него
-		last, err := time.Parse(time.RFC3339, cfg.LastRun)
-		if err != nil {
-			return "Ошибка парсинга LastRun"
-		}
-
+		// Повторный запуск
+		last, _ := time.Parse(time.RFC3339, cfg.LastRun)
 		nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
 		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
 
-		// Если nextRun в прошлом — добавляем дни
 		for !nextRun.After(now) {
 			nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
 		}
+		//fmt.Println("DEBUG: Повторный запуск по LastRun")
 	}
 
-	delay := time.Until(nextRun)
+	//fmt.Printf("DEBUG: nextRun = %s\n", nextRun.Format("02.01.2006 15:04"))
 
-	// Расчёт в днях, часах и минутах
+	delay := time.Until(nextRun)
 	totalMinutes := int(delay.Minutes())
 
 	if totalMinutes < 1 {
 		return fmt.Sprintf("▶ Планировщик запущен.\n"+
-			"🔄 Следующий запуск: %s в %s. ( До запуска меньше минуты. )",
+			"🔄 Следующий запуск: %s в %s. (до запуска меньше минуты)",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
 		)
@@ -519,27 +521,130 @@ func NextTime(cfg *conf.AppConfig) string {
 	hours := remainingMinutes / 60
 	minutes := remainingMinutes % 60
 
-	// Формируем строку "через X д. Y ч. Z мин."
 	var timeParts []string
+
 	if days > 0 {
 		timeParts = append(timeParts, fmt.Sprintf("%d д.", days))
 	}
-	if hours > 0 || days > 0 { // показываем часы, если есть дни или часы > 0
+
+	if hours > 0 {
 		timeParts = append(timeParts, fmt.Sprintf("%d ч.", hours))
 	}
-	if minutes > 0 || len(timeParts) == 0 { // минуты всегда, если ничего другого нет
+
+	if minutes > 0 || len(timeParts) == 0 {
 		timeParts = append(timeParts, fmt.Sprintf("%d мин.", minutes))
 	}
 
 	timeStr := strings.Join(timeParts, " ")
-	//println(timeStr)
-	return fmt.Sprintf(
-		"🔄 Следующий запуск: %s в %s. (через %s)",
+
+	return fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %s)",
 		nextRun.Format("02.01.2006"),
 		nextRun.Format("15:04"),
 		timeStr,
 	)
 }
+
+// Вспомогательная функция для безопасного парсинга LastRun
+func parseLastRun(lastRunStr string) time.Time {
+	t, err := time.Parse(time.RFC3339, lastRunStr)
+	if err != nil {
+		return time.Time{} // нулевое время
+	}
+	return t
+}
+
+//func NextTime(cfg *conf.AppConfig) string {
+//	if cfg == nil {
+//		return "Конфигурация не загружена"
+//	}
+//	if cfg.ScheduleDays <= 0 || cfg.ScheduleTime == "" {
+//		return "Планировщик не настроен"
+//	}
+//
+//	// Парсим scheduleTime (формат "HH:MM")
+//	parts := strings.Split(cfg.ScheduleTime, ":")
+//
+//	if len(parts) != 2 {
+//		return "Неверный формат времени в настройках"
+//	}
+//
+//	hour, errH := strconv.Atoi(parts[0])
+//	minute, errM := strconv.Atoi(parts[1])
+//	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+//		//cfg.SchedulerState = "paused"
+//		//_ = saveConfig(cfg, configPath)
+//		return "Некорректное время в настройках"
+//	}
+//
+//	now := time.Now()
+//	loc := now.Location()
+//
+//	// Рассчитываем время следующего запуска
+//	var nextRun time.Time
+//
+//	if cfg.LastRun == "" {
+//		// Первый запуск — сегодня в указанное время
+//		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//		if now.After(today) || now.Equal(today) {
+//			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+//		} else {
+//			nextRun = today
+//		}
+//	} else {
+//		// Есть LastRun — считаем от него
+//		last, err := time.Parse(time.RFC3339, cfg.LastRun)
+//		if err != nil {
+//			return "Ошибка парсинга LastRun"
+//		}
+//
+//		nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
+//		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+//
+//		// Если nextRun в прошлом — добавляем дни
+//		for !nextRun.After(now) {
+//			nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
+//		}
+//	}
+//
+//	delay := time.Until(nextRun)
+//
+//	// Расчёт в днях, часах и минутах
+//	totalMinutes := int(delay.Minutes())
+//
+//	if totalMinutes < 1 {
+//		return fmt.Sprintf("▶ Планировщик запущен.\n"+
+//			"🔄 Следующий запуск: %s в %s. ( До запуска меньше минуты. )",
+//			nextRun.Format("02.01.2006"),
+//			nextRun.Format("15:04"),
+//		)
+//	}
+//
+//	days := totalMinutes / (24 * 60)
+//	remainingMinutes := totalMinutes % (24 * 60)
+//	hours := remainingMinutes / 60
+//	minutes := remainingMinutes % 60
+//
+//	// Формируем строку "через X д. Y ч. Z мин."
+//	var timeParts []string
+//	if days > 0 {
+//		timeParts = append(timeParts, fmt.Sprintf("%d д.", days))
+//	}
+//	if hours > 0 || days > 0 { // показываем часы, если есть дни или часы > 0
+//		timeParts = append(timeParts, fmt.Sprintf("%d ч.", hours))
+//	}
+//	if minutes > 0 || len(timeParts) == 0 { // минуты всегда, если ничего другого нет
+//		timeParts = append(timeParts, fmt.Sprintf("%d мин.", minutes))
+//	}
+//
+//	timeStr := strings.Join(timeParts, " ")
+//	//println(timeStr)
+//	return fmt.Sprintf(
+//		"🔄 Следующий запуск: %s в %s. (через %s)",
+//		nextRun.Format("02.01.2006"),
+//		nextRun.Format("15:04"),
+//		timeStr,
+//	)
+//}
 
 func isProcessRunning(pid int) bool {
 	p, err := os.FindProcess(pid)
@@ -806,7 +911,7 @@ func main() {
 				for range open.ClickedCh {
 					//1100
 					fyne.Do(func() {
-						println(state_var.IsActive.Load())
+						//println(state_var.IsActive.Load())
 						if !state_var.IsActive.Load() {
 							loadConfigFromFile()
 							outputText.Set("")
@@ -881,7 +986,7 @@ func main() {
 	passEntry.SetPlaceHolder("Введите пароль GitLab")
 	//passEntry.TextStyle = fyne.TextStyle{}
 
-	netboxEntry := widget.NewEntry()
+	netboxEntry := NewNoContextMenuEntry()
 	netboxEntry.SetPlaceHolder("Введите API NetBox Token")
 	netboxEntry.Password = true
 	//netboxEntry.Disable()
@@ -1180,6 +1285,8 @@ func main() {
 	//9999
 	//записываем настройки
 	setConfig := func() {
+		stateMutex.Lock()
+		defer stateMutex.Unlock()
 		encryptedPass, err := crypt.Encrypt(passEntry.Text, crypt.SecretKey)
 		if err != nil {
 		}
@@ -1293,7 +1400,7 @@ func main() {
 		} else if !isValidTime(timeValue) {
 			dialog.ShowInformation(
 				"Ой!",
-				"Введите время в формате ЧЧ:ММ.\n",
+				"Введите корректное время в формате ЧЧ:ММ.\n",
 				w,
 			)
 
@@ -1324,10 +1431,26 @@ func main() {
 			scheduleEntry.SetPlaceHolder((fmt.Sprintf("%d", cfg.ScheduleDays) + "    ( ✅ Интервал дней сохранен в файл настроек.)"))
 			timeEntry.SetText("")
 			timeEntry.SetPlaceHolder(cfg.ScheduleTime + "    ( ✅ Время запуска сохранено в файл настроек.)")
+			println(cfg.SchedulerState + " первый save")
+			//time.Sleep(150 * time.Millisecond)
+			cfg.SchedulerState = "paused" // явно ставим "paused" после сохранения настроек
 
-			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
-			_ = saveConfig(cfg, configPath)
+			if err := saveConfig(cfg, configPath); err != nil {
+				appendOutput(outputText, "❌ Ошибка сохранения: "+err.Error()+"\n")
+				return
+			}
+			println(" 0. SetConfig. cfg.SchedulerState is " + cfg.SchedulerState)
+			fyne.Do(func() {
+				time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
+				PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+			})
+			//_ = saveConfig(cfg, configPath)
+			println(" 1. SetConfig. cfg.SchedulerState is " + cfg.SchedulerState)
+			//_ = saveConfig(cfg, configPath)
 
+			//PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+			//_ = saveConfig(cfg, configPath)
+			//println(cfg.SchedulerState + " в конце save")
 			//freshCfg, err := LoadConfig(configPath)
 			//if err == nil {
 			//	cfg = freshCfg
@@ -1363,13 +1486,15 @@ func main() {
 	//outputView := widget.NewLabelWithData(outputText)
 	//сбросить конфигу
 	resetConfig := func() {
+		stateMutex.Lock()
+		defer stateMutex.Unlock()
 
 		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
 			errorlog(outputText, scroll, "❌ Ошибка сброса настроек: "+err.Error()+"\n")
 			//outputView.SetText(outputView.Text + "\n❌ Ошибка сброса настроек: " + err.Error())
 			return
 		}
-		cfg := &conf.AppConfig{}
+		//cfg := &conf.AppConfig{}
 		//loginEntry.SetEditable(true)
 		//println("login editable in reset")
 		saveBtn.SetText("Сохранить")
@@ -1405,9 +1530,13 @@ func main() {
 		appendOutput(outputText, "⚙️ Настройки сброшены.\n")
 
 		//println("first run в reset", firstrun)
-		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+
 		//firstrun = true
-		cfg.SchedulerState = ""
+
+		cfg.SchedulerState = "paused"
+		//cfg = &conf.AppConfig{}
+		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+		println("5. resetConfig. cfg.SchedulerState is ", cfg.SchedulerState)
 		updateButtonState()
 		//println(cfg.SchedulerState, "на что смотрю")
 		//unblockInputs()

@@ -27,7 +27,7 @@ type UpdateHintFunc func()
 func Start(
 	cfgPath string,
 	scheduleDays int,
-	scheduleTime string,
+	scheduleTimeStr string,
 	lastRun string,
 	onUpdateLastRun func(string), // ← сохраняет LastRun в config.json
 	cloneAction func(),
@@ -35,11 +35,11 @@ func Start(
 	cancel <-chan struct{},
 	updateHint UpdateHintFunc,
 ) {
-	if scheduleDays <= 0 || scheduleTime == "" {
+	if scheduleDays <= 0 || scheduleTimeStr == "" {
 		return
 	}
 
-	parts := strings.Split(scheduleTime, ":")
+	parts := strings.Split(scheduleTimeStr, ":")
 	if len(parts) != 2 {
 		appendLog(output, "Ошибка: неверный формат времени в config.json\n")
 		return
@@ -53,7 +53,7 @@ func Start(
 		return
 	}
 
-	targetTime := time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute
+	//targetTime := time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute
 	interval := 24 * time.Hour * time.Duration(scheduleDays)
 
 	output.Set("")
@@ -61,44 +61,58 @@ func Start(
 	appendLog(output, fmt.Sprintf("▶ Планировщик запущен.\n"))
 
 	//time.AfterFunc(1*time.Second, func() {
-	ScheduleNext(cfgPath, targetTime, interval, lastRun, onUpdateLastRun, cloneAction, output, cancel, true) // ← true: печатаем сообщение сразу
+	ScheduleNext(cfgPath, scheduleTimeStr, interval, lastRun, onUpdateLastRun, cloneAction, output, cancel, true) // ← true: печатаем сообщение сразу
 	//})
 }
 
 func ScheduleNext(
 	cfgPath string,
-	targetTime, interval time.Duration,
+	scheduleTimeStr string,
+	interval time.Duration,
 	lastRun string,
 	onUpdateLastRun func(string),
 	cloneAction func(),
 	output binding.String,
 	cancel <-chan struct{},
 	printNext bool,
-	// manualRun stoprun,
 ) {
 	now := time.Now()
 	loc := now.Location()
-	hour := int(targetTime / time.Hour)
-	minute := int((targetTime % time.Hour) / time.Minute)
+
+	parts := strings.Split(scheduleTimeStr, ":")
+	if len(parts) != 2 {
+		appendLog(output, "Ошибка: неверный формат времени\n")
+		return
+	}
+
+	hour, _ := strconv.Atoi(parts[0])
+	minute, _ := strconv.Atoi(parts[1])
 
 	var nextRun time.Time
 
 	if lastRun != "" {
-		last, _ := time.Parse(time.RFC3339, lastRun)
-		if last.IsZero() {
-			last = now.Add(-365 * 24 * time.Hour)
-		}
-		nextRun = last.Add(interval)
-		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
-		for !nextRun.After(now) {
-			nextRun = nextRun.Add(interval)
-		}
-	} else {
-		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
-		if now.After(today) || now.Equal(today) {
-			nextRun = today.Add(interval)
+		last, err := time.Parse(time.RFC3339, lastRun)
+		if err == nil && !last.IsZero() && time.Since(last) > 10*time.Minute {
+			// Нормальный повторный запуск
+			nextRun = last.Add(interval)
+			nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+
+			for !nextRun.After(now) {
+				nextRun = nextRun.Add(interval)
+			}
 		} else {
+			lastRun = "" // сбрасываем, если lastRun слишком новый или некорректный
+		}
+	}
+
+	if lastRun == "" {
+		// Первый запуск или после сброса
+		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+
+		if now.Before(today) {
 			nextRun = today
+		} else {
+			nextRun = today.Add(interval)
 		}
 	}
 
@@ -106,28 +120,28 @@ func ScheduleNext(
 	totalMinutes := int(delay.Minutes())
 
 	if totalMinutes < 1 {
-		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. ( До запуска меньше минуты. )\n",
+		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (до запуска меньше минуты)\n",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
 		))
 	} else if printNext {
 		days := totalMinutes / (24 * 60)
-		remainingMinutes := totalMinutes % (24 * 60)
-		hours := remainingMinutes / 60
-		minutes := remainingMinutes % 60
-		var timeParts []string
+		remaining := totalMinutes % (24 * 60)
+		hours := remaining / 60
+		minutes := remaining % 60
+
+		var parts []string
 		if days > 0 {
-			timeParts = append(timeParts, fmt.Sprintf("%d д.", days))
+			parts = append(parts, fmt.Sprintf("%d д.", days))
 		}
-
 		if hours > 0 {
-			timeParts = append(timeParts, fmt.Sprintf("%d ч.", hours))
+			parts = append(parts, fmt.Sprintf("%d ч.", hours))
+		}
+		if minutes > 0 || len(parts) == 0 {
+			parts = append(parts, fmt.Sprintf("%d мин.", minutes))
 		}
 
-		if minutes > 0 || len(timeParts) == 0 {
-			timeParts = append(timeParts, fmt.Sprintf("%d мин.", minutes))
-		}
-		timeStr := strings.Join(timeParts, " ")
+		timeStr := strings.Join(parts, " ")
 		appendLog(output, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %s)\n",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
@@ -136,51 +150,23 @@ func ScheduleNext(
 	}
 
 	time.AfterFunc(delay, func() {
-		//println(manualRun, "manaulrun из планировщика")
-		//if manualRun == true {
 		select {
 		case <-cancel:
 			return
 		default:
 		}
 
-		//if state_var.IsDownloading.Load() {
-		//	println(" Загрузка уже идёт (ручная). Запуск по расписанию отменён")
-		//	return // молча отменяем — без ошибки
-		//}
-		//
-		//state_var.IsDownloading.Store(true)
-		//defer state_var.IsDownloading.Store(false)
-		println(state_var.ManRun.Load(), "перед запуском 1")
-		//state_var.ManRun.CompareAndSwap(false, true)
-		//println(state_var.ManRun.Load(), "перед запуском 2")
-		if !state_var.ManRun.Load() {
-
-			NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
-
-			go func() {
-				cloneAction()
-			}()
-
-			newLastRun := time.Now().Format(time.RFC3339)
-			onUpdateLastRun(newLastRun)
-
-			//println("всё хорошо")
-			ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
-			//println(printNext, "'это printNext")
+		if state_var.ManRun.Load() {
+			appendLog(output, "⚠️ Ручная загрузка активна. Запуск по расписанию отменён.\n")
 		} else {
-			println("уже настроено")
-
-			newLastRun := time.Now().Format(time.RFC3339)
-			onUpdateLastRun(newLastRun)
-			//state_var.ManRun.CompareAndSwap(false, true)
-			//println("всё хорошо")
-			ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
+			NotifySuccess("Внимание!", "Запуск загрузки по расписанию!")
+			go cloneAction()
 		}
-		//} else {
-		//	//cfg.LastRun = time.Now().Format(time.RFC3339)
-		//	appendLog(output, "УЖЕ ЗАПУЩЕНО")
-		//}
+
+		newLastRun := time.Now().Format(time.RFC3339)
+		onUpdateLastRun(newLastRun)
+
+		ScheduleNext(cfgPath, scheduleTimeStr, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
 	})
 }
 
