@@ -45,9 +45,11 @@ var white_trayIcon []byte
 
 // var SecretKey []byte
 var (
-	asIsCheck     *widget.Check
-	platformCheck *widget.Check
-	regionCheck   *widget.Check
+	schedulerRunning bool
+	schedulerCancel  chan struct{}
+	asIsCheck        *widget.Check
+	platformCheck    *widget.Check
+	regionCheck      *widget.Check
 
 	progressCheck *widget.Check
 	updateCheck   *widget.Check
@@ -1434,6 +1436,7 @@ func main() {
 			println(cfg.SchedulerState + " первый save")
 			//time.Sleep(150 * time.Millisecond)
 			cfg.SchedulerState = "paused" // явно ставим "paused" после сохранения настроек
+			schedulerRunning = false
 
 			if err := saveConfig(cfg, configPath); err != nil {
 				appendOutput(outputText, "❌ Ошибка сохранения: "+err.Error()+"\n")
@@ -1441,7 +1444,7 @@ func main() {
 			}
 			println(" 0. SetConfig. cfg.SchedulerState is " + cfg.SchedulerState)
 			fyne.Do(func() {
-				time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
+				//time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
 				PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 			})
 			//_ = saveConfig(cfg, configPath)
@@ -1494,6 +1497,9 @@ func main() {
 			//outputView.SetText(outputView.Text + "\n❌ Ошибка сброса настроек: " + err.Error())
 			return
 		}
+		cfg.SchedulerState = "paused"
+		schedulerRunning = false // ← обязательно сбрасываем флаг
+		schedulerCancel = nil
 		//cfg := &conf.AppConfig{}
 		//loginEntry.SetEditable(true)
 		//println("login editable in reset")
@@ -1533,15 +1539,17 @@ func main() {
 
 		//firstrun = true
 
-		cfg.SchedulerState = "paused"
 		//cfg = &conf.AppConfig{}
-		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+		fyne.Do(func() {
+			//time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
+			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+		})
 		println("5. resetConfig. cfg.SchedulerState is ", cfg.SchedulerState)
 		updateButtonState()
 		//println(cfg.SchedulerState, "на что смотрю")
 		//unblockInputs()
 	}
-
+	//1028
 	//действие кнопки "скачать/сохранить"
 	saveBtn.OnTapped = func() {
 		if saveBtn.Text == "Сохранить" {
@@ -1602,7 +1610,7 @@ func main() {
 
 		}
 	}
-
+	//1027
 	// 1. Создаём кнопку для загрузки
 	cloneBtn := widget.NewButton("Скачать", nil)
 	cloneBtn.Importance = widget.HighImportance
@@ -2219,7 +2227,11 @@ func main() {
 
 	saveBtn.Resize(fyne.NewSize(140, 40))
 	startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, scroll, w)
-	PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+	schedulerRunning = false
+	fyne.Do(func() {
+		time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
+		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
+	})
 	//startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, w)
 
 	//// Добавляешь в интерфейс

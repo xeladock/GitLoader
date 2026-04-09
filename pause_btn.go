@@ -14,12 +14,11 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-var (
-	//btn              *widget.Button
-	//cfg              *config.AppConfig
-	schedulerRunning bool
-	schedulerCancel  chan struct{}
-)
+//var (
+////btn              *widget.Button
+////cfg              *config.AppConfig
+//
+//)
 
 //	func calculateNextRun(days int, timeStr string, lastRunStr string) time.Time {
 //		now := time.Now()
@@ -172,8 +171,9 @@ func CreateStartPauseButton(
 		)
 
 	} else if cfg.SchedulerState == "paused" {
-		updateButtonAppearance(btn, cfg)
+		//updateButtonAppearance(btn, cfg)
 		fyne.Do(func() {
+			updateButtonAppearance(btn, cfg)
 			appendOutput(output, "⚠️ ВНИМАНИЕ! Планировщик не активен! Нажмите «Старт» для запуска.\n")
 		})
 	} else {
@@ -181,7 +181,7 @@ func CreateStartPauseButton(
 	}
 
 	btn.OnTapped = func() {
-
+		println("schedulerRunning is ", schedulerRunning)
 		if schedulerRunning {
 			stopScheduler(cfg, configPath, output, btn, scroll)
 
@@ -190,6 +190,7 @@ func CreateStartPauseButton(
 		}
 		println(cfg.SchedulerState + " ==== в btn.OnTapped")
 	}
+	println("6. cfg.SchedulerState в CreateStartPauseButton is ", cfg.SchedulerState)
 	return btn
 }
 
@@ -239,8 +240,8 @@ func stopScheduler(cfg *config.AppConfig, configPath string, output binding.Stri
 	if !schedulerRunning || schedulerCancel == nil {
 		return
 	}
-	close(schedulerCancel)
 	schedulerRunning = false
+	close(schedulerCancel)
 	cfg.SchedulerState = "paused"
 	_ = saveConfig(cfg, configPath)
 	outputText.Set("")
@@ -248,6 +249,7 @@ func stopScheduler(cfg *config.AppConfig, configPath string, output binding.Stri
 	if err := saveConfig(cfg, configPath); err != nil {
 		appendOutput(output, "❌ Ошибка сохранения состояния: "+err.Error()+"\n")
 	}
+
 	fyne.Do(func() {
 		//time.Sleep(100 * time.Millisecond)
 		updateButtonAppearance(btn, cfg)
