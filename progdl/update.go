@@ -3,6 +3,7 @@ package progdl
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"configtool.local/acl"
@@ -55,19 +56,21 @@ func RunUpdateMode(
 		}
 	}
 
-	if parserCheck {
-		appendOutput(output, scroll, "📥Скачиваем ACL-Parser...\n")
-
-		if err := dwl_parser.DownloadACLParser(sortedDst); err != nil { // targetDir — папка, куда идёт сохранение
-			appendOutput(output, scroll, "❌ "+err.Error()+"\n")
-		} else {
-			appendOutput(output, scroll, "✅ ACL-Parser успешно скачан\n\n")
-		}
-	}
-
 	//if parserCheck {
-	//	dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+	//	appendOutput(output, scroll, "\rСкачиваем ACL-Parser...\n")
+	//
+	//	if err := dwl_parser.DownloadACLParser(sortedDst); err != nil { // targetDir — папка, куда идёт сохранение
+	//		appendOutput(output, scroll, "❌ "+err.Error()+"\n")
+	//	} else {
+	//		appendOutput(output, scroll, "✅ ACL-Parser успешно скачан\n")
+	//	}
 	//}
+
+	if parserCheck {
+		targetDir := filepath.Join(sortedDst, "..", "..")
+		//println("targetDir is ", targetDir)
+		dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+	}
 
 	// Только для режимов сортировки (не «Как есть») — копируем в config_files_clear
 	//currentDir := filepath.Join(sortedDst, "config_files_clear")

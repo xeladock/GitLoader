@@ -35,19 +35,20 @@ func Start(
 	cancel <-chan struct{},
 	updateHint UpdateHintFunc,
 ) {
-	if scheduleDays <= 0 || scheduleTimeStr == "" {
+	if scheduleDays <= 0 || scheduleDays > 31 || scheduleTimeStr == "" {
+		appendLog(output, "❌ Ошибка: Нарушение интервала загрузки.\n")
 		return
 	}
 
 	parts := strings.Split(scheduleTimeStr, ":")
 	if len(parts) != 2 {
-		appendLog(output, "Ошибка: неверный формат времени в config.json\n")
+		appendLog(output, "❌ Ошибка: Неверный формат времени.\n")
 		return
 	}
 	hour, _ := strconv.Atoi(parts[0])
 	minute, _ := strconv.Atoi(parts[1])
 	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-		appendLog(output, "Ошибка: некорректное время in config.json\n")
+		appendLog(output, "❌ Ошибка: Некорректное время в настройках.\n")
 		//cfg.SchedulerState = "paused"
 		//_ = saveConfig(cfg, configPath)
 		return

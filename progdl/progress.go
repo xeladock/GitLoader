@@ -126,24 +126,26 @@ func RunProgressMode(
 		}
 	}
 
-	if parserAdd {
-		appendOutput(output, scroll, "📥Скачиваем ACL-Parser...\n")
-
-		if err := dwl_parser.DownloadACLParser(datedDir); err != nil { // targetDir — папка, куда идёт сохранение
-			appendOutput(output, scroll, "❌ "+err.Error()+"\n")
-		} else {
-			appendOutput(output, scroll, "✅ ACL-Parser успешно скачан\n")
-		}
-	}
-
 	//if parserAdd {
-	//	dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+	//	appendOutput(output, scroll, "Скачиваем ACL-Parser...\n")
+	//
+	//	if err := dwl_parser.DownloadACLParser(datedDir); err != nil { // targetDir — папка, куда идёт сохранение
+	//		appendOutput(output, scroll, "❌ "+err.Error()+"\n")
+	//	} else {
+	//		appendOutput(output, scroll, "✅ ACL-Parser успешно скачан\n")
+	//	}
 	//}
+
+	if parserAdd {
+		targetDir := filepath.Join(datedDir, "..", "..")
+		//println("datedDir is ", targetDir)
+		dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+	}
 
 	appendOutput(
 		output,
 		scroll,
-		fmt.Sprintf("\n📣Файлы %s сохранены в папку:  %s\n", folderName, dateStr),
+		fmt.Sprintf("📣Файлы %s сохранены в папку:  %s\n", folderName, dateStr),
 	)
 	time.Sleep(400 * time.Millisecond)
 

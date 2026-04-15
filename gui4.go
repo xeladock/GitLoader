@@ -455,20 +455,21 @@ func NextTime(cfg *conf.AppConfig) string {
 	if cfg == nil {
 		return "Конфигурация не загружена"
 	}
-	if cfg.ScheduleDays <= 0 || cfg.ScheduleTime == "" {
-		return "Планировщик не настроен"
+	if cfg.ScheduleDays <= 0 || cfg.ScheduleDays > 31 || cfg.ScheduleTime == "" {
+		return "❌ Ошибка: Нарушение интервала загрузки."
 	}
 
 	parts := strings.Split(cfg.ScheduleTime, ":")
 	if len(parts) != 2 {
-		return "Неверный формат времени в настройках"
+		return "❌ Ошибка: Неверный формат времени в настройках"
 	}
 
 	hour, _ := strconv.Atoi(parts[0])
 	minute, _ := strconv.Atoi(parts[1])
 
 	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-		return "Некорректное время в настройках"
+
+		return "❌ Ошибка: Некорректное время в настройках."
 	}
 
 	now := time.Now()
@@ -2164,11 +2165,6 @@ func main() {
 							func(overwrite bool) {
 
 								if overwrite {
-									// Да — перезаписываем в стандартную папку
-									//appendOutput(outputText, "🟢 Запуск по запросу пользователя.\n")
-									//time.Sleep(1000 * time.Millisecond)
-									//manualRun = true
-									//println(manualRun, "manualRun из первого выбора")
 									go startDownload()
 								} else {
 									state_var.OverridePath = true
@@ -2177,6 +2173,7 @@ func main() {
 									dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 										if err != nil || uri == nil {
 											state_var.ManRun.CompareAndSwap(true, false)
+											state_var.OverridePath = false
 											//appendOutput(outputText, "Выбор папки отменён.\n")
 											//state_var.ManRun.Store(false)
 											//manualRun = false
@@ -2214,7 +2211,7 @@ func main() {
 
 	saveBtn.Resize(fyne.NewSize(140, 40))
 	startPauseBtn = CreateStartPauseButton(cfg, configPath, func() { cloneBtn.OnTapped() }, outputText, scroll, w)
-	schedulerRunning = false
+	//schedulerRunning = false
 	fyne.Do(func() {
 		time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
 		PauseUpdateButtonState(startPauseBtn, cfg, configPath)
