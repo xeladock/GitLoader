@@ -8,6 +8,7 @@ import (
 	"configtool.local/acl"
 	"configtool.local/asis"
 	config "configtool.local/conf"
+	"configtool.local/dwl_parser"
 	"configtool.local/platform"
 	"configtool.local/region"
 	"fyne.io/fyne/v2/container"
@@ -44,6 +45,7 @@ func RunUpdateMode(
 		if err := acl.SortFilesByACL(targetDir, sortedDst, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
 			return err
 		}
+
 	}
 
 	if regionMode {
@@ -53,6 +55,20 @@ func RunUpdateMode(
 		}
 	}
 
+	if parserCheck {
+		appendOutput(output, scroll, "📥Скачиваем ACL-Parser...\n")
+
+		if err := dwl_parser.DownloadACLParser(sortedDst); err != nil { // targetDir — папка, куда идёт сохранение
+			appendOutput(output, scroll, "❌ "+err.Error()+"\n")
+		} else {
+			appendOutput(output, scroll, "✅ ACL-Parser успешно скачан\n\n")
+		}
+	}
+
+	//if parserCheck {
+	//	dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+	//}
+
 	// Только для режимов сортировки (не «Как есть») — копируем в config_files_clear
 	//currentDir := filepath.Join(sortedDst, "config_files_clear")
 	currentDir := sortedDst
@@ -60,7 +76,7 @@ func RunUpdateMode(
 	if err := copyDir(sortedDst, currentDir); err != nil {
 		return err
 	}
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 	if manualRun == false {
 		nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
 		delay := time.Until(nextTime)

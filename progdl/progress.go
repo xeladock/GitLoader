@@ -12,6 +12,7 @@ import (
 	"configtool.local/acl"
 	"configtool.local/asis"
 	config "configtool.local/conf"
+	"configtool.local/dwl_parser"
 	"configtool.local/platform"
 	"configtool.local/region"
 	"fyne.io/fyne/v2"
@@ -125,43 +126,26 @@ func RunProgressMode(
 		}
 	}
 
+	if parserAdd {
+		appendOutput(output, scroll, "📥Скачиваем ACL-Parser...\n")
+
+		if err := dwl_parser.DownloadACLParser(datedDir); err != nil { // targetDir — папка, куда идёт сохранение
+			appendOutput(output, scroll, "❌ "+err.Error()+"\n")
+		} else {
+			appendOutput(output, scroll, "✅ ACL-Parser успешно скачан\n")
+		}
+	}
+
+	//if parserAdd {
+	//	dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+	//}
+
 	appendOutput(
 		output,
 		scroll,
 		fmt.Sprintf("\n📣Файлы %s сохранены в папку:  %s\n", folderName, dateStr),
 	)
-	time.Sleep(500 * time.Millisecond)
-
-	// === Сохранение в папку с датой ===
-	//dateStr := time.Now().Format("02-01-06") // 27-11-25
-	//datedDir := filepath.Join(".", dateStr, "config_files_clear")
-	//switch {
-	//case dcCheck && lanCheck:
-	//	_ = appendOutput(output,
-	//		"Файлы ЛВС и ЦОД сохранены в папку: "+dateStr)
-	//case dcCheck:
-	//	_ = appendOutput(output,
-	//		"Файлы ЦОД сохранены в папку: "+dateStr)
-	//case lanCheck:
-	//	_ = appendOutput(output,
-	//		"Файлы ЛВС сохранены в папку: "+dateStr)
-	//}
-
-	//_ = appendOutput(output, "Сохранение архивной копии («прогресс»)...\n")
-	//if dcCheck {
-	//_ = appendOutput(output, "Файлы ЦОД сохранены в папку: "+dateStr+"")
-	//}
-	//if lanCheck {
-	//	_ = appendOutput(output, "Файлы ЛВС сохранены в папку: "+dateStr+"")
-	//}
-
-	//if err := os.MkdirAll(datedDir, 0755); err != nil {
-	//	return err
-	//}
-	//
-	//if err := copyDir(sortedDst, datedDir); err != nil {
-	//	return err
-	//}
+	time.Sleep(400 * time.Millisecond)
 
 	//_ = appendOutput(output, "Архивная копия сохранена успешно.")
 	if manualRun == false {
@@ -186,8 +170,6 @@ func RunProgressMode(
 //	}
 //	return !info.IsDir() // существует и это файл
 //}
-
-//scheduler.ScheduleNext(cfgPath, targetTime, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false) // ← true: печатаем в следующем цикле
 
 //delay := time.Until(nextRun)
 //hours := int(delay.Hours())
@@ -225,10 +207,6 @@ func appendOutput(output binding.String, scroll *container.Scroll, msg string) {
 		current, _ := output.Get()
 		_ = output.Set(current + msg)
 	})
-	//fyne.Do(func() {
-	//	scroll.ScrollToBottom()
-	//	//scroll.Refresh()
-	//})
 }
 
 //func appendOutput(bindStr binding.String, msg string) error {

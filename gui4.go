@@ -1784,7 +1784,7 @@ func main() {
 		if state_var.ManRun.Load() {
 			appendOutput(outputText, "🟢 Запуск по запросу пользователя\n")
 			time.Sleep(500 * time.Millisecond)
-			appendOutput(outputText, "🔥 Старт процессов GitTornado...\n")
+			appendOutput(outputText, "🔥 Подключаемся и загружаем файлы из gitlab...\n")
 			//NotifySuccess("раз!", "два")
 			//exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "10000", "раз", "два").Run()
 
@@ -1853,7 +1853,6 @@ func main() {
 				authURL = fmt.Sprintf("https://%s:%s@%s", login, encodedPass, strings.TrimPrefix(repoURL, "https://"))
 				//println(authURL)
 			}
-
 			cmd := exec.Command("git", "clone", "--depth", "1", authURL, dstDir)
 
 			outputBytes, err := cmd.CombinedOutput()
@@ -2109,18 +2108,6 @@ func main() {
 		}
 
 		fyne.Do(func() {
-			//appendOutput(outputText, "✅ Все операции для ЛВС выполнены!\n")
-			//NotifySuccess("Ура!", "Конфиги загружены и отсортированы.")
-			//if fileExists(configPath) && cfg.ScheduleTime != "" {
-			//	time.AfterFunc(500*time.Millisecond, func() {
-			//		// Мы уже в UI-контексте, поэтому fyne.Do НЕ нужен
-			//		appendOutput(outputText, NextTime(cfg))
-			//		fyne.Do(func() {
-			//			scroll.ScrollToBottom()
-			//		})
-			//	})
-			//}
-
 			scroll.ScrollToBottom()
 			scroll.Refresh()
 			allUnblock()

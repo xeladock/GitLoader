@@ -59,7 +59,7 @@ var aclPlatforms2 = map[string]struct{}{
 	"Cisco IOS XR":       {},
 	"Cisco PIX":          {},
 	"QTECH NOS":          {},
-	"Raisecom":           {},
+	//"Raisecom":           {},
 }
 
 func SortFilesByACL(
