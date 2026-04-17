@@ -513,7 +513,7 @@ func NextTime(cfg *conf.AppConfig) string {
 
 	if totalMinutes < 1 {
 		return fmt.Sprintf("▶ Планировщик запущен.\n"+
-			"🔄 Следующий запуск: %s в %s. (до запуска меньше минуты)",
+			"🔄 Следующий запуск: %s в %s. (До запуска меньше минуты)",
 			nextRun.Format("02.01.2006"),
 			nextRun.Format("15:04"),
 		)
@@ -1715,7 +1715,7 @@ func main() {
 	//modeCard2 := widget.NewCard("", "", modeRow)
 	//modeRadioContainer := container.NewCenter(modeCard2)
 	//1003
-
+	println("manrun is ", state_var.ManRun.Load())
 	startDownload := func() {
 
 		lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
@@ -1931,6 +1931,7 @@ func main() {
 					//appendOutput(outputText, fmt.Sprintf("Ошибка создания подпапки %s: %v\n", sdDst, err))
 					//continue
 				}
+				println("manrun in update mode", state_var.ManRun.Load())
 				//appendOutput(outputText, "Режим: Обновление текущих файлов\n")
 				if err := progdl.RunUpdateMode(dstDir, sdDst, cfg,
 					asIsCheck.Checked, platformCheck.Checked, regionCheck.Checked, dcbool, false, aclCheck.Checked, parserCheck.Checked,
