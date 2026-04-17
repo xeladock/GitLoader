@@ -316,6 +316,14 @@ func loadConfigFromFile() {
 		lanCheck.SetChecked(false)
 	}
 
+	switch cfg.Parser {
+	case "true":
+		parserCheck.SetChecked(true)
+	default:
+		parserCheck.SetChecked(false)
+
+	}
+
 }
 
 // для остановки
@@ -905,7 +913,7 @@ func main() {
 			//}
 			//systray.SetTooltip("GitLab Downloader")
 			systray.SetTitle("GitTornado")
-			systray.SetTooltip("GitTornado v1.0")
+			systray.SetTooltip("GitTornado v1.2")
 			//999
 			open := systray.AddMenuItem("Открыть", "Показать программу")
 			quit := systray.AddMenuItem("Выход", "Закрыть программу")

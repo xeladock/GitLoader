@@ -60,9 +60,9 @@ func Start(
 
 	//targetTime := time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute
 	interval := 24 * time.Hour * time.Duration(scheduleDays)
-	println("time.hour is ", time.Hour)
-	println("duration is ", time.Duration(scheduleDays))
-	println("interval is ", interval)
+	//println("time.hour is ", time.Hour)
+	//println("duration is ", time.Duration(scheduleDays))
+	//println("interval is ", interval)
 
 	output.Set("")
 	updateHint()
