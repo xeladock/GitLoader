@@ -4,6 +4,7 @@ package progdl
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"configtool.local/acl"
@@ -39,7 +40,6 @@ func RunUpdateMode(
 		}
 		// ← В режиме «Как есть» — НЕ копируем ничего дополнительно!
 		//Append(output, "Режим «Как есть» завершён — файлы уже в нужной папке.\n")
-		return nil
 	}
 
 	if aclMode {
@@ -83,79 +83,48 @@ func RunUpdateMode(
 	if manualRun == false {
 		nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
 		delay := time.Until(nextTime)
-		hours := int(delay.Hours())
-		minutes := int(delay.Minutes()) - hours*60
 
-		appendOutput(output, scroll, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+		totalMinutes := int(delay.Minutes())
+
+		days := totalMinutes / (24 * 60)
+		remaining := totalMinutes % (24 * 60)
+		hours := remaining / 60
+		minutes := remaining % 60
+
+		var parts []string
+
+		if days > 0 {
+			parts = append(parts, fmt.Sprintf("%d д.", days))
+		}
+		if hours > 0 || days > 0 { // показываем часы, если есть дни
+			parts = append(parts, fmt.Sprintf("%d ч.", hours))
+		}
+		if minutes > 0 || len(parts) == 0 { // минуты всегда, если нет ни дней, ни часов
+			parts = append(parts, fmt.Sprintf("%d мин.", minutes))
+		}
+
+		timeStr := strings.Join(parts, " ")
+
+		appendOutput(output, scroll, fmt.Sprintf(
+			"🔄 Следующий запуск: %s в %s. (через %s)\n",
 			nextTime.Format("02.01.2006"),
 			nextTime.Format("15:04"),
-			hours, minutes))
+			timeStr,
+		))
 	}
+	//println("manualrun in update is ", manualRun)
+	//if manualRun == false {
+	//	nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
+	//	delay := time.Until(nextTime)
+	//	hours := int(delay.Hours())
+	//	minutes := int(delay.Minutes()) - hours*60
+	//
+	//	appendOutput(output, scroll, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+	//		nextTime.Format("02.01.2006"),
+	//		nextTime.Format("15:04"),
+	//		hours, minutes))
+	//}
 
 	//Append(output, "Текущие файлы успешно обновлены.\n")
 	return nil
 }
-
-// RunUpdateMode — текущий режим: просто обновляет ./config_files_clear
-//func RunUpdateMode(
-//	targetDir, sortedDst string,
-//	asIs, platformMode, regionMode, dcCheck, lanCheck bool,
-//	netboxToken string,
-//	output binding.String,
-//	scroll *container.Scroll,
-//) error {
-//	//wantDC := dcCheck.Checked
-//	//wantLAN := lanCheck.Checked
-//
-//	//_ = RemoveGitFolder(targetDir, output)
-//
-//	// === Сортировка (одинаковая для обоих режимов) ===
-//	if platformMode {
-//		if err := platform.SortFilesByPlatform(targetDir, sortedDst, netboxToken, output, scroll, dcCheck, lanCheck); err != nil {
-//			return err
-//		}
-//	}
-//	if asIs {
-//		if err := asis.MoveAsIs(targetDir, sortedDst, output, dcCheck, lanCheck); err != nil {
-//			return err
-//		}
-//	}
-//	if regionMode {
-//		if err := region.SortByRegion(targetDir, sortedDst, output, scroll, dcCheck, lanCheck); err != nil {
-//			return err
-//		}
-//	}
-//
-//	// === Перезапись в актуальную папку ===
-//	currentDir := "config_files_clear"
-//
-//	//startDir := "./configs"
-//	hasDC := filepath.Join(targetDir, "ЦОД")
-//	hasLAN := filepath.Join(targetDir, "ЛВС")
-//	println(hasDC, hasLAN)
-//
-//	if dirExists(hasDC) {
-//		currentDir = hasDC
-//	}
-//
-//	if dirExists(hasLAN) {
-//		currentDir = hasLAN
-//	}
-//	//_ = appendOutput(output, "Обновление текущих файлов...\n")
-//
-//	// Просто перезаписываем содержимое — без удаления папки целиком
-//	if err := copyDir(sortedDst, currentDir); err != nil {
-//		return err
-//	}
-//
-//	//_ = appendOutput(output, "Текущие файлы успешно обновлены.\n")
-//	return nil
-//}
-
-//func dirExists(path string) bool {
-//	info, err := os.Stat(path)
-//	if err != nil {
-//		return false
-//	}
-//	return info.IsDir()
-//}

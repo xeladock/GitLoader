@@ -58,7 +58,7 @@ import (
 //		return next
 //	}
 func updateButtonAppearance(btn *widget.Button, cfg *config.AppConfig) {
-	println("updateButtonAppearance → SchedulerState =", cfg.SchedulerState)
+	//println("updateButtonAppearance → SchedulerState =", cfg.SchedulerState)
 
 	if cfg.SchedulerState == "running" {
 		btn.Importance = widget.DangerImportance
@@ -188,9 +188,9 @@ func CreateStartPauseButton(
 		} else {
 			startScheduler(cfg, configPath, cloneAction, output, btn, scroll)
 		}
-		println(cfg.SchedulerState + " ==== в btn.OnTapped")
+		//println(cfg.SchedulerState + " ==== в btn.OnTapped")
 	}
-	println("6. cfg.SchedulerState в CreateStartPauseButton is ", cfg.SchedulerState)
+	//println("6. cfg.SchedulerState в CreateStartPauseButton is ", cfg.SchedulerState)
 	return btn
 }
 

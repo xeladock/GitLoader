@@ -148,19 +148,50 @@ func RunProgressMode(
 		fmt.Sprintf("📣Файлы %s сохранены в папку:  %s\n", folderName, dateStr),
 	)
 	time.Sleep(400 * time.Millisecond)
-
-	//_ = appendOutput(output, "Архивная копия сохранена успешно.")
 	if manualRun == false {
 		nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
 		delay := time.Until(nextTime)
-		hours := int(delay.Hours())
-		minutes := int(delay.Minutes()) - hours*60
 
-		appendOutput(output, scroll, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+		totalMinutes := int(delay.Minutes())
+
+		days := totalMinutes / (24 * 60)
+		remaining := totalMinutes % (24 * 60)
+		hours := remaining / 60
+		minutes := remaining % 60
+
+		var parts []string
+
+		if days > 0 {
+			parts = append(parts, fmt.Sprintf("%d д.", days))
+		}
+		if hours > 0 || days > 0 { // показываем часы, если есть дни
+			parts = append(parts, fmt.Sprintf("%d ч.", hours))
+		}
+		if minutes > 0 || len(parts) == 0 { // минуты всегда, если нет ни дней, ни часов
+			parts = append(parts, fmt.Sprintf("%d мин.", minutes))
+		}
+
+		timeStr := strings.Join(parts, " ")
+
+		appendOutput(output, scroll, fmt.Sprintf(
+			"🔄 Следующий запуск: %s в %s. (через %s)\n",
 			nextTime.Format("02.01.2006"),
 			nextTime.Format("15:04"),
-			hours, minutes))
+			timeStr,
+		))
 	}
+	//_ = appendOutput(output, "Архивная копия сохранена успешно.")
+	//if manualRun == false {
+	//	nextTime := calculateNextRun(cfg.ScheduleDays, cfg.ScheduleTime, cfg.LastRun)
+	//	delay := time.Until(nextTime)
+	//	hours := int(delay.Hours())
+	//	minutes := int(delay.Minutes()) - hours*60
+	//
+	//	appendOutput(output, scroll, fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %d ч. %d мин.)\n",
+	//		nextTime.Format("02.01.2006"),
+	//		nextTime.Format("15:04"),
+	//		hours, minutes))
+	//}
 
 	return nil
 }
