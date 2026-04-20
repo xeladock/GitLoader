@@ -168,6 +168,7 @@ func CreateStartPauseButton(
 			output,
 			schedulerCancel,
 			updateHint,
+			cfg.RunCount,
 		)
 
 	} else if cfg.SchedulerState == "paused" {
@@ -225,6 +226,7 @@ func startScheduler(cfg *config.AppConfig, configPath string, cloneAction func()
 		output,
 		schedulerCancel,
 		updateHint,
+		cfg.RunCount,
 	)
 
 	fyne.Do(func() {

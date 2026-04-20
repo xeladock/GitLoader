@@ -12,5 +12,6 @@ type AppConfig struct {
 	ScheduleTime   string `json:"schedule_time"`
 	SavedPlace     string `json:"saved_place"`
 	LastRun        string `json:"last_run,omitempty"`
+	RunCount       int    `json:"run_count"`
 	SchedulerState string `json:"scheduler_state"`
 }

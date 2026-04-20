@@ -458,103 +458,341 @@ func getConfigPath() string {
 	return filepath.Join(configDir, "config.json")
 }
 
+//func NextTime(cfg *conf.AppConfig) string {
+//	if cfg.ScheduleDays > 31 || cfg.ScheduleTime == "" || cfg.ScheduleDays <= 0 {
+//		return "❌Ошибка: Нарушение интервала загрузки."
+//	}
+//
+//	parts := strings.Split(cfg.ScheduleTime, ":")
+//	if len(parts) != 2 {
+//		return "❌Ошибка: Неверный формат времени."
+//	}
+//
+//	hour, _ := strconv.Atoi(parts[0])
+//	minute, _ := strconv.Atoi(parts[1])
+//
+//	now := time.Now()
+//	loc := now.Location()
+//
+//	var nextRun time.Time
+//
+//	// === Определяем, первый это запуск или повторный ===
+//	isFirstRun := cfg.LastRun == "" || cfg.LastRun == "0001-01-01T00:00:00Z"
+//
+//	if !isFirstRun {
+//		// Просто считаем от последнего запуска
+//		last, _ := time.Parse(time.RFC3339, cfg.LastRun)
+//		nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
+//		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+//
+//		for !nextRun.After(now) {
+//			nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
+//		}
+//	} else {
+//		// Первый запуск
+//		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//		if now.Before(today) {
+//			nextRun = today
+//		} else {
+//			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+//		}
+//	}
+//
+//	println(isFirstRun)
+//	println(cfg.LastRun)
+//	// Форматирование задержки
+//	delay := time.Until(nextRun)
+//	totalMinutes := int(delay.Minutes())
+//
+//	var delayText string
+//	if totalMinutes < 1 {
+//		delayText = "меньше минуты"
+//	} else {
+//		days := totalMinutes / (24 * 60)
+//		remaining := totalMinutes % (24 * 60)
+//		hours := remaining / 60
+//		minutes := remaining % 60
+//
+//		var parts []string
+//		if days > 0 {
+//			parts = append(parts, fmt.Sprintf("%d д.", days))
+//		}
+//		if hours > 0 || days > 0 {
+//			parts = append(parts, fmt.Sprintf("%d ч.", hours))
+//		}
+//		if minutes > 0 || len(parts) == 0 {
+//			parts = append(parts, fmt.Sprintf("%d мин.", minutes))
+//		}
+//		delayText = strings.Join(parts, " ")
+//	}
+//	//appendOutput(outputText, "▶ Планировщик запущен.\n")
+//	return fmt.Sprintf("▶ Планировщик запущен.\n🔄 Следующий запуск: %s в %s. (через %s)",
+//		nextRun.Format("02.01.2006"),
+//		nextRun.Format("15:04"),
+//		delayText)
+//}
+
+//func NextTime(cfg *conf.AppConfig) string {
+//	if cfg.ScheduleDays <= 0 || cfg.ScheduleDays > 31 || cfg.ScheduleTime == "" {
+//		return "❌ Планировщик не настроен"
+//	}
+//
+//	// Парсим время запуска (HH:MM)
+//	parts := strings.Split(cfg.ScheduleTime, ":")
+//	if len(parts) != 2 {
+//		return "❌ Неверный формат времени"
+//	}
+//
+//	hour, _ := strconv.Atoi(parts[0])
+//	minute, _ := strconv.Atoi(parts[1])
+//
+//	now := time.Now()
+//	loc := now.Location()
+//
+//	var nextRun time.Time
+//
+//	// === Основная надёжная логика ===
+//	if cfg.LastRun == "" || cfg.LastRun == "0001-01-01T00:00:00Z" || time.Since(parseLastRun(cfg.LastRun)) < 10*time.Minute {
+//		// Первый запуск вообще
+//		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//
+//		if now.Before(today) {
+//			nextRun = today
+//		} else {
+//			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+//		}
+//	} else {
+//		// Повторный запуск — считаем от LastRun
+//		last, err := time.Parse(time.RFC3339, cfg.LastRun)
+//		if err != nil {
+//			// Если LastRun повреждён — считаем как первый запуск
+//			today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//			if now.Before(today) {
+//				nextRun = today
+//			} else {
+//				nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+//			}
+//		} else {
+//			// Нормальный расчёт от последнего запуска
+//			nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
+//			nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+//
+//			// Если рассчитанное время уже в прошлом — добавляем интервал
+//			for !nextRun.After(now) {
+//				nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
+//			}
+//		}
+//	}
+//
+//	// === Форматирование задержки ===
+//	delay := time.Until(nextRun)
+//	totalMinutes := int(delay.Minutes())
+//
+//	var timeStr string
+//
+//	if totalMinutes < 1 {
+//		timeStr = "(До запуска меньше минуты)"
+//	} else {
+//		days := totalMinutes / (24 * 60)
+//		remaining := totalMinutes % (24 * 60)
+//		hours := remaining / 60
+//		minutes := remaining % 60
+//
+//		var parts []string
+//		if days > 0 {
+//			parts = append(parts, fmt.Sprintf("%d д.", days))
+//		}
+//		if hours > 0 || days > 0 {
+//			parts = append(parts, fmt.Sprintf("%d ч.", hours))
+//		}
+//		if minutes > 0 || len(parts) == 0 {
+//			parts = append(parts, fmt.Sprintf("%d мин.", minutes))
+//		}
+//		timeStr = strings.Join(parts, " ")
+//	}
+//
+//	return fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %s)",
+//		nextRun.Format("02.01.2006"),
+//		nextRun.Format("15:04"),
+//		timeStr)
+//}
+
 // const configPath = "config.json"
+//
+//	func NextTime(cfg *conf.AppConfig) string {
+//		if cfg == nil {
+//			return "Конфигурация не загружена"
+//		}
+//		if cfg.ScheduleDays <= 0 || cfg.ScheduleDays > 31 || cfg.ScheduleTime == "" {
+//			return "❌ Ошибка: Нарушение интервала загрузки."
+//		}
+//
+//		parts := strings.Split(cfg.ScheduleTime, ":")
+//		if len(parts) != 2 {
+//			return "❌ Ошибка: Неверный формат времени в настройках"
+//		}
+//
+//		hour, _ := strconv.Atoi(parts[0])
+//		minute, _ := strconv.Atoi(parts[1])
+//
+//		if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+//
+//			return "❌ Ошибка: Некорректное время в настройках."
+//		}
+//
+//		now := time.Now()
+//		loc := now.Location()
+//
+//		//fmt.Printf("DEBUG NextTime: now=%s, ScheduleTime=%s, LastRun=%s\n",
+//		//	now.Format("15:04"), cfg.ScheduleTime, cfg.LastRun)
+//
+//		var nextRun time.Time
+//
+//		// ЖЁСТКОЕ условие: считаем первый запуск, если LastRun пустой ИЛИ очень свежий (меньше 30 минут)
+//		if cfg.LastRun == "" ||
+//			cfg.LastRun == "0001-01-01T00:00:00Z" {
+//
+//			today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+//
+//			if now.Before(today) {
+//				nextRun = today
+//				//fmt.Println("DEBUG: Первый запуск → СЕГОДНЯ")
+//			} else {
+//				nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
+//				//fmt.Println("DEBUG: Первый запуск → ЗАВТРА")
+//			}
+//		} else {
+//			// Повторный запуск
+//			last, _ := time.Parse(time.RFC3339, cfg.LastRun)
+//			nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
+//			nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+//
+//			for !nextRun.After(now) {
+//				nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
+//			}
+//			//fmt.Println("DEBUG: Повторный запуск по LastRun")
+//		}
+//
+//		//fmt.Printf("DEBUG: nextRun = %s\n", nextRun.Format("02.01.2006 15:04"))
+//
+//		delay := time.Until(nextRun)
+//		totalMinutes := int(delay.Minutes())
+//
+//		if totalMinutes < 1 {
+//			return fmt.Sprintf("▶ Планировщик запущен.\n"+
+//				"🔄 Следующий запуск: %s в %s. (До запуска меньше минуты)",
+//				nextRun.Format("02.01.2006"),
+//				nextRun.Format("15:04"),
+//			)
+//		}
+//
+//		days := totalMinutes / (24 * 60)
+//		remainingMinutes := totalMinutes % (24 * 60)
+//		hours := remainingMinutes / 60
+//		minutes := remainingMinutes % 60
+//
+//		var timeParts []string
+//
+//		if days > 0 {
+//			timeParts = append(timeParts, fmt.Sprintf("%d д.", days))
+//		}
+//
+//		if hours > 0 {
+//			timeParts = append(timeParts, fmt.Sprintf("%d ч.", hours))
+//		}
+//
+//		if minutes > 0 || len(timeParts) == 0 {
+//			timeParts = append(timeParts, fmt.Sprintf("%d мин.", minutes))
+//		}
+//
+//		timeStr := strings.Join(timeParts, " ")
+//
+//		return fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %s)",
+//			nextRun.Format("02.01.2006"),
+//			nextRun.Format("15:04"),
+//			timeStr,
+//		)
+//	}
 func NextTime(cfg *conf.AppConfig) string {
-	if cfg == nil {
-		return "Конфигурация не загружена"
-	}
-	if cfg.ScheduleDays <= 0 || cfg.ScheduleDays > 31 || cfg.ScheduleTime == "" {
+	if cfg.ScheduleDays > 31 || cfg.ScheduleTime == "" || cfg.ScheduleDays <= 0 {
 		return "❌ Ошибка: Нарушение интервала загрузки."
 	}
 
 	parts := strings.Split(cfg.ScheduleTime, ":")
-	if len(parts) != 2 {
-		return "❌ Ошибка: Неверный формат времени в настройках"
-	}
-
 	hour, _ := strconv.Atoi(parts[0])
 	minute, _ := strconv.Atoi(parts[1])
+	//parts := strings.Split(cfg.ScheduleTime, ":")
+	if len(parts) != 2 {
+		return "❌ Ошибка: Неверный формат времени в настройках."
+	}
+
+	//hour, _ := strconv.Atoi(parts[0])
+	//minute, _ := strconv.Atoi(parts[1])
 
 	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-
 		return "❌ Ошибка: Некорректное время в настройках."
 	}
 
 	now := time.Now()
 	loc := now.Location()
 
-	//fmt.Printf("DEBUG NextTime: now=%s, ScheduleTime=%s, LastRun=%s\n",
-	//	now.Format("15:04"), cfg.ScheduleTime, cfg.LastRun)
-
 	var nextRun time.Time
 
-	// ЖЁСТКОЕ условие: считаем первый запуск, если LastRun пустой ИЛИ очень свежий (меньше 30 минут)
-	if cfg.LastRun == "" ||
-		cfg.LastRun == "0001-01-01T00:00:00Z" ||
-		time.Since(parseLastRun(cfg.LastRun)) < 30*time.Minute {
-
+	if cfg.RunCount == 0 {
+		// Первый запуск в истории
 		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
-
 		if now.Before(today) {
 			nextRun = today
-			//fmt.Println("DEBUG: Первый запуск → СЕГОДНЯ")
 		} else {
 			nextRun = today.AddDate(0, 0, cfg.ScheduleDays)
-			//fmt.Println("DEBUG: Первый запуск → ЗАВТРА")
 		}
 	} else {
-		// Повторный запуск
-		last, _ := time.Parse(time.RFC3339, cfg.LastRun)
+		// Обычный повторный запуск
+		last, err := time.Parse(time.RFC3339, cfg.LastRun)
+		if err != nil {
+			last = now.Add(-365 * 24 * time.Hour) // fallback
+		}
 		nextRun = last.AddDate(0, 0, cfg.ScheduleDays)
 		nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
 
 		for !nextRun.After(now) {
 			nextRun = nextRun.AddDate(0, 0, cfg.ScheduleDays)
 		}
-		//fmt.Println("DEBUG: Повторный запуск по LastRun")
 	}
 
-	//fmt.Printf("DEBUG: nextRun = %s\n", nextRun.Format("02.01.2006 15:04"))
-
+	// Форматирование задержки (твой текущий код)
 	delay := time.Until(nextRun)
 	totalMinutes := int(delay.Minutes())
 
-	if totalMinutes < 1 {
-		return fmt.Sprintf("▶ Планировщик запущен.\n"+
-			"🔄 Следующий запуск: %s в %s. (До запуска меньше минуты)",
-			nextRun.Format("02.01.2006"),
-			nextRun.Format("15:04"),
-		)
+	var delayText string
+	if totalMinutes <= 1 {
+		delayText = "(До запуска меньше минуты)"
+	} else {
+		days := totalMinutes / (24 * 60)
+		remaining := totalMinutes % (24 * 60)
+		hours := remaining / 60
+		minutes := remaining % 60
+
+		var parts []string
+		if days > 0 {
+			parts = append(parts, fmt.Sprintf("%d д.", days))
+		}
+		if hours > 0 || days > 0 {
+			parts = append(parts, fmt.Sprintf("%d ч.", hours))
+		}
+		if minutes > 0 || len(parts) == 0 {
+			parts = append(parts, fmt.Sprintf("%d мин.", minutes))
+		}
+		delayText = strings.Join(parts, " ")
 	}
 
-	days := totalMinutes / (24 * 60)
-	remainingMinutes := totalMinutes % (24 * 60)
-	hours := remainingMinutes / 60
-	minutes := remainingMinutes % 60
-
-	var timeParts []string
-
-	if days > 0 {
-		timeParts = append(timeParts, fmt.Sprintf("%d д.", days))
-	}
-
-	if hours > 0 {
-		timeParts = append(timeParts, fmt.Sprintf("%d ч.", hours))
-	}
-
-	if minutes > 0 || len(timeParts) == 0 {
-		timeParts = append(timeParts, fmt.Sprintf("%d мин.", minutes))
-	}
-
-	timeStr := strings.Join(timeParts, " ")
-
-	return fmt.Sprintf("🔄 Следующий запуск: %s в %s. (через %s)",
+	return fmt.Sprintf("▶ Планировщик запущен.\n"+"🔄 Следующий запуск: %s в %s. (через %s)",
 		nextRun.Format("02.01.2006"),
 		nextRun.Format("15:04"),
-		timeStr,
-	)
+		delayText)
 }
 
+// 10111
 // Вспомогательная функция для безопасного парсинга LastRun
 func parseLastRun(lastRunStr string) time.Time {
 	t, err := time.Parse(time.RFC3339, lastRunStr)
@@ -790,18 +1028,9 @@ func main() {
 	if isBusy && oldPID > 0 && isProcessRunning(oldPID) {
 		exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "3000", "Oй!", "Программа уже запущена!").Run()
 		sound.PlayBan()
-		//fmt.Println("Программа сейчас выполняет длительную операцию (загрузка/сортировка)")
-		//fmt.Println("Запуск новой копии заблокирован. Подождите завершения.")
 		os.Exit(1)
 	}
 
-	// Если нет BUSY, но процесс жив → убиваем старый
-	//if oldPID > 0 && isProcessRunning(oldPID) {
-	//	//fmt.Printf("Завершаем старый экземпляр (PID %d)\n", oldPID)
-	//	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "2000", "Oй!", "Рестарт процесса!").Run()
-	//	killProcess(oldPID)
-	//	time.Sleep(1500 * time.Millisecond)
-	//	os.Remove(lockPath)
 	//}
 	//1005
 	if oldPID > 0 {
@@ -833,61 +1062,11 @@ func main() {
 		f.Close()
 		os.Remove(lockPath)
 	}()
-	//lockPath := filepath.Join(os.TempDir(), "gittornado.lock")
-	//
-	//f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0666)
-	//if err != nil {
-	//	fmt.Println("Ошибка открытия lock-файла:", err)
-	//	os.Exit(1)
-	//}
-	//
-	//// Пытаемся заблокировать
-	//if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-	//	exec.Command("notify-send", "-u", "normal", "-a", "GitTornado", "-t", "3000", "Oй!", "Программа уже запущена!").Run()
-	//	sound.PlayBan()
-	//	//fmt.Println("Программа уже запущена")
-	//	f.Close()
-	//	oldPIDBytes, _ := os.ReadFile(lockPath)
-	//	oldPID, _ := strconv.Atoi(strings.TrimSpace(string(oldPIDBytes)))
-	//
-	//	// Если PID есть и процесс жив — блокируем запуск
-	//	if oldPID > 0 && isProcessRunning(oldPID) {
-	//		fmt.Println("Программа уже запущена (PID:", oldPID, ")")
-	//		if err := killProcess(oldPID); err != nil {
-	//			fmt.Println("Не удалось завершить старый процесс:", err)
-	//		}
-	//		//os.Exit(1)
-	//	}
-	//	//os.Exit(1)
-	//}
-	//
-	//// Записываем PID
-	//f.Seek(0, 0)
-	//f.Truncate(0)
-	//fmt.Fprintf(f, "%d\n", os.Getpid())
-	//
-	//defer func() {
-	//	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-	//	f.Close()
-	//	os.Remove(lockPath)
-	//
-	//}()
 
 	//fmt.Println("Программа запущена успешно (PID:", os.Getpid(), ")")
 	a := app.NewWithID("gittornado")
 	a.Settings().SetTheme(theme.LightTheme())
-	//a.Settings().SetTheme(hiddenTheme{})
-	// Set Fyne app icon as well (optional)
-	//if fyne.CurrentApp().Settings().Theme() == theme.LightTheme() {
-	//	systray.SetIcon(trayIcon)
-	//	//systray.SetIcon(darkIcon.StaticContent())
-	//	//a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
-	//} else {
-	//	systray.SetIcon(white_trayIcon)
-	//	//systray.SetIcon(lightIcon.StaticContent())
-	//	//a.SetIcon(fyne.NewStaticResource("icon_white.png", white_trayIcon))
-	//}
-	//a.SetIcon(fyne.NewStaticResource("icon.png", trayIcon))
+
 	a.SetIcon(fyne.NewStaticResource("icon_white.png", white_trayIcon))
 	w := a.NewWindow("GitTornado")
 	//860
@@ -909,9 +1088,6 @@ func main() {
 		systray.Run(func() {
 			//if len(trayIcon) > 0 {
 			systray.SetIcon(trayIcon)
-			//systray.SetTooltip("GitLab Downloader v0.71")
-			//}
-			//systray.SetTooltip("GitLab Downloader")
 			systray.SetTitle("GitTornado")
 			systray.SetTooltip("GitTornado v1.2")
 			//999
@@ -928,19 +1104,11 @@ func main() {
 							outputText.Set("")
 							updateHint()
 							if fileExists(configPath) && cfg.SchedulerState == "running" {
-								appendOutput(outputText, "▶ Планировщик запущен.\n")
-								//println(cfg.SchedulerState, "услвоие 1")
 								appendOutput(outputText, NextTime(cfg))
 							} else if fileExists(configPath) && cfg.SchedulerState == "paused" {
-								//println(cfg.SchedulerState, "услвоие 2")
 								appendOutput(outputText, "⚠️ ВНИМАНИЕ! Планировщик не активен. Нажмите «Старт» для возобновления.")
-								//} else if fileExists(configPath) && cfg.SchedulerState == "" {
-								//	println(cfg.SchedulerState, "услвоие 3")
-								//	appendOutput(outputText, "⚠️ Планировщик не запущен. Нажмите «Старт» для запуска.")
-							}
 
-							//refreshSchedulerStatus()
-							//appendOutput(outputText, fmt.Sprintf("12222222"))
+							}
 
 							w.Show()
 							w.RequestFocus()
@@ -963,13 +1131,9 @@ func main() {
 						w.Close() // ← закрываем окно
 						if err := os.RemoveAll(targetDir); err != nil {
 						}
-						//appendOutput(output, fmt.Sprintf("Ошибка удаления .git: %v\n", err))
-
 						a.Quit() // ← завершаем приложение (БЕЗ ОШИБКИ!)
 					})
-
 					systray.Quit() // ← это можно вне UI-потока
-					// os.Exit(0) — НЕ НУЖНО! a.Quit() уже завершает приложение
 				}
 			}()
 		}, func() {})
@@ -1420,8 +1584,9 @@ func main() {
 		} else {
 			cfg.ScheduleTime = strings.TrimSpace(timeEntry.Text)
 		}
-		cfg.ScheduleDays = days
+
 		cfg.LastRun = time.Now().Format("2006-01-02T15:04:05Z07:00")
+		cfg.RunCount = 0
 		configPath := getConfigPath()
 		if err := saveConfig(cfg, configPath); err != nil {
 			errorlog(outputText, scroll, fmt.Sprintf("❌ Ошибка сохранения: %v", err))
@@ -1453,22 +1618,10 @@ func main() {
 			}
 			println(" 0. SetConfig. cfg.SchedulerState is " + cfg.SchedulerState)
 			fyne.Do(func() {
-				//time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
 				PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 			})
 			//_ = saveConfig(cfg, configPath)
 			println(" 1. SetConfig. cfg.SchedulerState is " + cfg.SchedulerState)
-			//_ = saveConfig(cfg, configPath)
-
-			//PauseUpdateButtonState(startPauseBtn, cfg, configPath)
-			//_ = saveConfig(cfg, configPath)
-			//println(cfg.SchedulerState + " в конце save")
-			//freshCfg, err := LoadConfig(configPath)
-			//if err == nil {
-			//	cfg = freshCfg
-			//} else {
-			//	println("Ошибка перечитывания:", err)
-			//}
 
 			browseBtn.Disable()
 			//}
@@ -1507,6 +1660,7 @@ func main() {
 			return
 		}
 		cfg.SchedulerState = "paused"
+		//cfg.LastRun = ""
 		schedulerRunning = false // ← обязательно сбрасываем флаг
 		schedulerCancel = nil
 		//cfg := &conf.AppConfig{}
@@ -1553,7 +1707,7 @@ func main() {
 			//time.Sleep(80 * time.Millisecond) // даём время на запись и стабилизацию
 			PauseUpdateButtonState(startPauseBtn, cfg, configPath)
 		})
-		println("5. resetConfig. cfg.SchedulerState is ", cfg.SchedulerState)
+		//println("5. resetConfig. cfg.SchedulerState is ", cfg.SchedulerState)
 		updateButtonState()
 		//println(cfg.SchedulerState, "на что смотрю")
 		//unblockInputs()
@@ -1969,10 +2123,12 @@ func main() {
 			if dcCheck.Checked && lanCheck.Checked {
 			} else {
 				if state_var.ManRun.Load() == false {
+					cfg.RunCount++
 					cfg.LastRun = time.Now().Format(time.RFC3339)
+					_ = saveConfig(cfg, configPath)
 				} else {
-					//state_var.ManRun.Store(false)
-					state_var.ManRun.CompareAndSwap(true, false)
+					state_var.ManRun.Store(false)
+					//state_var.ManRun.CompareAndSwap(true, false)
 				}
 				fyne.Do(func() {
 					scroll.ScrollToBottom()
@@ -2109,15 +2265,18 @@ func main() {
 
 			//1002
 			if state_var.ManRun.Load() == false {
+				cfg.RunCount++
 				cfg.LastRun = time.Now().Format(time.RFC3339)
+				_ = saveConfig(cfg, configPath)
 			} else {
-				//state_var.ManRun.Store(false)
-				state_var.ManRun.CompareAndSwap(true, false)
+				state_var.ManRun.Store(false)
+				//state_var.ManRun.CompareAndSwap(true, false)
 			}
 			lanbool = false
 		}
 
 		fyne.Do(func() {
+			//println(state_var.ManRun.Load())
 			scroll.ScrollToBottom()
 			scroll.Refresh()
 			allUnblock()
@@ -2159,8 +2318,8 @@ func main() {
 				"Планировщик настроен. Загрузить принудительно?\n",
 
 				func(confirmed bool) {
-					//state_var.ManRun.Store(true)
-					state_var.ManRun.CompareAndSwap(false, true)
+					state_var.ManRun.Store(true)
+					//state_var.ManRun.CompareAndSwap(false, true)
 					//println(manualRun, "manualrun перед выбором")
 					//manualRun = true
 					//println(manualRun, "manualrun после выбора")
@@ -2177,11 +2336,13 @@ func main() {
 									go startDownload()
 								} else {
 									state_var.OverridePath = true
+									//state_var.ManRun.Store(false)
 									//overridePath = true
 									// Нет — выбираем папку
 									dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 										if err != nil || uri == nil {
-											state_var.ManRun.CompareAndSwap(true, false)
+											//state_var.ManRun.CompareAndSwap(true, false)
+											state_var.ManRun.Store(false)
 											state_var.OverridePath = false
 											//appendOutput(outputText, "Выбор папки отменён.\n")
 											//state_var.ManRun.Store(false)

@@ -38,6 +38,7 @@ func Start(
 	output binding.String,
 	cancel <-chan struct{},
 	updateHint UpdateHintFunc,
+	countRun int,
 ) {
 	if scheduleDays <= 0 || scheduleDays > 31 || scheduleTimeStr == "" {
 		appendLog(output, "❌ Ошибка: Нарушение интервала загрузки.\n")
@@ -69,7 +70,7 @@ func Start(
 	appendLog(output, fmt.Sprintf("▶ Планировщик запущен.\n"))
 
 	//time.AfterFunc(1*time.Second, func() {
-	ScheduleNext(cfgPath, scheduleTimeStr, interval, lastRun, onUpdateLastRun, cloneAction, output, cancel, true) // ← true: печатаем сообщение сразу
+	ScheduleNext(cfgPath, scheduleTimeStr, interval, lastRun, onUpdateLastRun, cloneAction, output, cancel, true, countRun) // ← true: печатаем сообщение сразу
 	//})
 	if !NextScheduledRun.IsZero() {
 		fmt.Println("=== ПЛАНИРОВЩИК ЗАПУЩЕН ===")
@@ -88,6 +89,7 @@ func ScheduleNext(
 	output binding.String,
 	cancel <-chan struct{},
 	printNext bool,
+	countRun int,
 ) {
 	now := time.Now()
 	loc := now.Location()
@@ -103,28 +105,35 @@ func ScheduleNext(
 
 	var nextRun time.Time
 
-	if lastRun != "" {
-		last, err := time.Parse(time.RFC3339, lastRun)
-		if err == nil && !last.IsZero() && time.Since(last) > 10*time.Minute {
-			// Нормальный повторный запуск
-			nextRun = last.Add(interval)
-			nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
-
-			for !nextRun.After(now) {
-				nextRun = nextRun.Add(interval)
-			}
-		} else {
-			lastRun = "" // сбрасываем, если lastRun слишком новый или некорректный
-		}
-	}
-
-	if lastRun == "" {
-		// Первый запуск или после сброса
+	if countRun == 0 {
+		// Это первый запуск в истории программы
 		today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
 
 		if now.Before(today) {
 			nextRun = today
 		} else {
+			nextRun = today.Add(interval)
+		}
+	} else {
+		// Обычный повторный запуск
+		if lastRun != "" {
+			last, err := time.Parse(time.RFC3339, lastRun)
+			if err == nil && !last.IsZero() {
+				nextRun = last.Add(interval)
+				nextRun = time.Date(nextRun.Year(), nextRun.Month(), nextRun.Day(), hour, minute, 0, 0, loc)
+
+				// Если время уже прошло — прибавляем интервалы
+				for !nextRun.After(now) {
+					nextRun = nextRun.Add(interval)
+				}
+			} else {
+				// LastRun повреждён — fallback на первый запуск
+				today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
+				nextRun = today.Add(interval)
+			}
+		} else {
+			// LastRun пустой — считаем как первый запуск
+			today := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
 			nextRun = today.Add(interval)
 		}
 	}
@@ -182,7 +191,7 @@ func ScheduleNext(
 		newLastRun := time.Now().Format(time.RFC3339)
 		onUpdateLastRun(newLastRun)
 
-		ScheduleNext(cfgPath, scheduleTimeStr, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false)
+		ScheduleNext(cfgPath, scheduleTimeStr, interval, newLastRun, onUpdateLastRun, cloneAction, output, cancel, false, countRun)
 	})
 }
 
