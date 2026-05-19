@@ -146,14 +146,14 @@ func DownloadACLParser(targetDir string, output binding.String, scroll *containe
 	localSize := int32(0)
 	if info, err := os.Stat(localFilePath); err == nil {
 		localSize = int32(info.Size())
-		println("local size: ", localSize)
+		//println("local size: ", localSize)
 	}
-	println("Отправляем HEAD-запрос...\n")
+	//println("Отправляем HEAD-запрос...\n")
 	// HEAD-запрос
 	req, _ := http.NewRequest("HEAD", url, nil)
-	println("req is ", req)
+	//println("req is ", req)
 	resp, err := client.Do(req)
-	println("resp is ", resp)
+	//println("resp is ", resp)
 	if err != nil {
 		appendOutput(output, "❌ Не удалось подключиться к portal.net.rt.ru\n")
 		//println("ошибка 0", err)
@@ -161,14 +161,14 @@ func DownloadACLParser(targetDir string, output binding.String, scroll *containe
 		return
 	}
 	defer resp.Body.Close()
-	println(fmt.Sprintf("HEAD-запрос выполнен. Статус: %d\n", resp.StatusCode))
+	//println(fmt.Sprintf("HEAD-запрос выполнен. Статус: %d\n", resp.StatusCode))
 	if resp.StatusCode != http.StatusOK {
 		appendOutput(output, fmt.Sprintf("❌ portal.net.rt.ru вернул ошибку: %d\n", resp.StatusCode))
 		return
 	}
 
 	remoteSize := int32(resp.ContentLength)
-	println("remoteSize is ", remoteSize)
+	//println("remoteSize is ", remoteSize)
 	if remoteSize > 0 && localSize == remoteSize {
 		//appendOutput(output, "✅ ACL-Parser уже актуален\n")
 		return
@@ -196,19 +196,19 @@ func DownloadACLParser(targetDir string, output binding.String, scroll *containe
 func downloadFileWithClient(url, destPath string, client *http.Client, output binding.String, scroll *container.Scroll) error {
 	resp, err := client.Get(url)
 	if err != nil {
-		return fmt.Errorf("не удалось скачать файл: %w", err)
+		return fmt.Errorf("❌ Не удалось скачать файл: %w", err)
 	}
 	defer resp.Body.Close()
 
 	out, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("не удалось создать файл: %w", err)
+		return fmt.Errorf("❌ Не удалось создать файл: %w", err)
 	}
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return fmt.Errorf("ошибка записи файла: %w", err)
+		return fmt.Errorf("❌ Ошибка записи файла: %w", err)
 	}
 
 	appendOutput(output, "✅ ACL-Parser успешно скачан.\n")

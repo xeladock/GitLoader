@@ -794,13 +794,13 @@ func NextTime(cfg *conf.AppConfig) string {
 
 // 10111
 // Вспомогательная функция для безопасного парсинга LastRun
-func parseLastRun(lastRunStr string) time.Time {
-	t, err := time.Parse(time.RFC3339, lastRunStr)
-	if err != nil {
-		return time.Time{} // нулевое время
-	}
-	return t
-}
+//func parseLastRun(lastRunStr string) time.Time {
+//	t, err := time.Parse(time.RFC3339, lastRunStr)
+//	if err != nil {
+//		return time.Time{} // нулевое время
+//	}
+//	return t
+//}
 
 //func NextTime(cfg *conf.AppConfig) string {
 //	if cfg == nil {
