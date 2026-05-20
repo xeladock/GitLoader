@@ -139,7 +139,7 @@ func RunProgressMode(
 	if parserAdd {
 		targetDir := filepath.Join(datedDir, "..", "..")
 		//println("datedDir is ", targetDir)
-		dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+		dwl_parser.DownloadACLParser(targetDir, output) // или baseDir, если нужно на уровень выше
 	}
 
 	appendOutput(

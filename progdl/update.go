@@ -69,7 +69,7 @@ func RunUpdateMode(
 	if parserCheck {
 		targetDir := filepath.Join(sortedDst, "..", "..")
 		//println("targetDir is ", targetDir)
-		dwl_parser.DownloadACLParser(targetDir, output, scroll) // или baseDir, если нужно на уровень выше
+		dwl_parser.DownloadACLParser(targetDir, output) // или baseDir, если нужно на уровень выше
 	}
 
 	// Только для режимов сортировки (не «Как есть») — копируем в config_files_clear

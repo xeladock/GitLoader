@@ -18,7 +18,7 @@ import (
 type UpdateHintFunc func()
 
 var (
-	NextScheduledRun time.Time // ← добавь эту строку
+	NextScheduledRun time.Time //
 )
 
 //type stoprun bool

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 )
 
@@ -121,7 +120,7 @@ import (
 //			//appendOutput(output, fmt.Sprintf("⚠️ Не удалось сделать файл исполняемым: %v\n", err))
 //		}
 //	}
-func DownloadACLParser(targetDir string, output binding.String, scroll *container.Scroll) {
+func DownloadACLParser(targetDir string, output binding.String) {
 	// Один клиент на всю операцию
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -181,7 +180,7 @@ func DownloadACLParser(targetDir string, output binding.String, scroll *containe
 	}
 
 	// Скачиваем через тот же client!
-	if err := downloadFileWithClient(url, localFilePath, client, output, scroll); err != nil {
+	if err := downloadFileWithClient(url, localFilePath, client, output); err != nil {
 		appendOutput(output, "❌ "+err.Error()+"\n")
 		return
 	}
@@ -193,7 +192,7 @@ func DownloadACLParser(targetDir string, output binding.String, scroll *containe
 	}
 }
 
-func downloadFileWithClient(url, destPath string, client *http.Client, output binding.String, scroll *container.Scroll) error {
+func downloadFileWithClient(url, destPath string, client *http.Client, output binding.String) error {
 	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("❌ Не удалось скачать файл: %w", err)
